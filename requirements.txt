@@ -1,0 +1,7 @@
+numpy
+pillow
+# for real models (not needed for `--model mock` or the tests)
+torch
+transformers>=4.56
+accelerate
+bitsandbytes  # only for --4bit
