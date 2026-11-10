@@ -26,7 +26,9 @@ class HFModel:
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
-        kwargs = {"dtype": torch.float16, "device_map": "auto"}
+        # fp16 on GPU (T4 has no fast bf16); fp32 on CPU, where fp16 is slow or unsupported
+        kwargs = {"dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+                  "device_map": "auto"}
         if load_4bit:
             from transformers import BitsAndBytesConfig
             kwargs["quantization_config"] = BitsAndBytesConfig(
