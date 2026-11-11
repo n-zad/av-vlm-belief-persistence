@@ -8,6 +8,26 @@ Course project for CMPE 249: IA Systems (Track 6, Safety and Evaluation).
 
 Vision-language models (VLMs) are increasingly used for perception and reasoning in autonomous systems, including vehicles. A model that forms an incorrect visual interpretation at one timestep may continue to rely on it even after later observations provide contradictory evidence. This project evaluates whether VLMs revise these incorrect interpretations over time or allow them to influence later scene understanding. Using sequential driving-image data, we examine object presence, attributes, spatial relationships, scene state, and other driving-relevant information. We compare stateful and stateless inference across Qwen2.5-VL and LLaVA-OneVision using metrics for hallucination persistence, correction latency, performance difference, and safety-action accuracy. The results will characterize when earlier visual errors persist and inform the evaluation of more reliable VLM components for safety-critical autonomous systems.
 
+## Results
+
+Both models keep saying "no pedestrian" after the pedestrian becomes clearly visible when they see
+their own earlier answers (145 nuScenes sequences per model, 95% bootstrap CIs):
+
+| | Qwen2.5-VL-7B (1024 px) | LLaVA-OneVision-7B (768 px) |
+|---|---|---|
+| Post-evidence accuracy, stateless → stateful | 38% → 9% | 84% → 65% |
+| Stateful − stateless (paired) | −29 pts [−35, −23] | −18 pts [−25, −12] |
+| Clear frames seen without history that are still seen with history | 22% [12, 34] of 50 | 73% [65, 81] of 119 |
+| Answers identical to the previous answer, stateless / stateful | 31% / 84% | 37% / 93% |
+| Reconsider vs plain stateful | no better | no better |
+
+![Seen without history: still seen with history?](figures/visible_without_history.png)
+
+**Limitations:** no pedestrian-free control sequences (false positives unmeasured; LLaVA says
+"present" on 52–59% of pre-evidence frames); rule-based action labels (92% "proceed"); different
+image sizes per model to fit a T4; nuScenes visibility spans all six cameras and was not manually
+reviewed; 107 LLaVA replies were a bare "No" with no action, counted as unsafe.
+
 ## Evaluation pipeline
 
 `nuScenes sequence → VLM (stateless / stateful / reconsider) → answer parsing → metrics`
