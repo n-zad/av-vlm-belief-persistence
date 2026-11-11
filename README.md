@@ -26,7 +26,8 @@ asked whether a pedestrian is present, plus a confidence, evidence and a driving
 
 Metrics (`belief_eval/metrics.py`, 95% bootstrap CIs): hallucination persistence rate (wrong just
 before the evidence frame and still wrong one frame after it), correction latency (median / p90),
-post-evidence accuracy and the paired stateful − stateless difference, and safety-action balanced
+post-evidence accuracy and the paired stateful − stateless difference, accuracy on evidence frames
+the model sees without history (isolates the effect of history from perception), safety-action balanced
 accuracy and unsafe-action rate.
 
 ### Usage

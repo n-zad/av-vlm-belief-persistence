@@ -104,6 +104,9 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(s["stateless"]["n_hallucinated"], 0)
         self.assertEqual(s["stateless"]["safety_balanced_accuracy"], 1.0)
         self.assertEqual(s["stateful_minus_stateless_post_acc"]["mean"], -0.5)
+        # stateless sees the pedestrian on the evidence frame; stateful (with history) does not
+        self.assertEqual(s["visible_without_history"]["n"], 1)
+        self.assertEqual(s["visible_without_history"]["stateful"]["evidence_frame_accuracy"], 0.0)
 
     def test_stateful_sends_history(self):
         seen = []

@@ -69,5 +69,17 @@ def summarize(results, n_boot=1000, seed=0):
             diffs = [acc["stateful"][i] - acc["stateless"][i] for i in acc["stateful"] if i in acc["stateless"]]
             per_mode["stateful_minus_stateless_post_acc"] = {
                 "mean": mean(diffs), "ci": bootstrap_ci(diffs, n_boot, rng), "n_pairs": len(diffs)}
+        if "stateless" in per_mode:
+            # evidence frames the model can perceive (stateless is right there): any error in the
+            # other modes on that same frame is caused by the history, not by perception
+            at_k = {(r["id"], r["mode"]): r["frames"][r["evidence_index"]] for r in results if r["model"] == model}
+            ok = lambda i, m: at_k[(i, m)]["present"] == at_k[(i, m)]["gt_present"]
+            visible = [i for (i, m) in at_k if m == "stateless" and ok(i, m)]
+            per_mode["visible_without_history"] = {"n": len(visible)}
+            for m in (m for m in per_mode if m in ("stateful", "reconsider")):
+                hits = [float(ok(i, m)) for i in visible if (i, m) in at_k]
+                per_mode["visible_without_history"][m] = {
+                    "evidence_frame_accuracy": mean(hits) if hits else None,
+                    "ci": bootstrap_ci(hits, n_boot, rng)}
         out[model] = per_mode
     return out
