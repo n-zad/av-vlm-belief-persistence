@@ -94,7 +94,9 @@ def frame_records(t, category_prefix):
         for a in anns.get(sample_token, []):
             p = to_camera(a["translation"], pose, calib)
             if in_image(p, calib["camera_intrinsic"], sd["width"], sd["height"]):
+                u, v, w = np.asarray(calib["camera_intrinsic"]) @ p
                 objects[a["instance_token"]] = {
+                    "u": float(u / w), "v": float(v / w),  # box centre in pixels, for figures
                     "visibility": int(a["visibility_token"]), "x": float(p[0]), "z": float(p[2]),
                     # pinhole approx: on-screen height of the box (nuScenes size = w, l, h)
                     "px_height": calib["camera_intrinsic"][0][0] * a["size"][2] / float(p[2])}
@@ -167,6 +169,7 @@ def mine(dataroot, version="v1.0-mini", category_prefix="human.pedestrian",
                         "image": f["image"],
                         "visibility": f["objects"][inst]["visibility"],
                         "px_height": round(f["objects"][inst]["px_height"]),
+                        "u": round(f["objects"][inst]["u"]), "v": round(f["objects"][inst]["v"]),
                         "gt_present": True,
                         "gt_action": safe_action(f["objects"].values()),
                     } for s, f in zip(window, seq)],

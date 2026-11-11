@@ -108,6 +108,23 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(s["visible_without_history"]["n"], 1)
         self.assertEqual(s["visible_without_history"]["stateful"]["evidence_frame_accuracy"], 0.0)
 
+    def test_figures_render(self):
+        from PIL import Image
+        from belief_eval import figures
+        with tempfile.TemporaryDirectory() as root:
+            write_tables(root, [PED_AHEAD])
+            seq = mine.mine(root)[0]
+            os.makedirs(os.path.join(root, "samples", "CAM_FRONT"))
+            for f in seq["frames"]:
+                Image.new("RGB", (1600, 900)).save(os.path.join(root, f["image"]))
+            stuck = [answer("no", "proceed")] * 4 + [answer("yes", "stop")] * 2
+            results = [{"model": "m", **run.run_sequence(ScriptedModel(a), seq, mode, root)}
+                       for mode, a in [("stateless", [answer("yes", "stop")] * 6), ("stateful", stuck)]]
+            out = os.path.join(root, "figs")
+            self.assertEqual(figures.make_all(results, {seq["id"]: seq}, out, root),
+                             ["copying.png", "examples_m.png", "seen_by_size.png",
+                              "visible_without_history.png", "yes_by_frame.png"])
+
     def test_stateful_sends_history(self):
         seen = []
 

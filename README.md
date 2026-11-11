@@ -41,9 +41,13 @@ python -m belief_eval mine --dataroot data/nuscenes
 python -m belief_eval run --dataroot data/nuscenes --model mock --limit 5   # dry run, no GPU
 python -m belief_eval run --dataroot data/nuscenes --model Qwen/Qwen2.5-VL-3B-Instruct --4bit --out results_qwen.jsonl
 python -m belief_eval score results_qwen.jsonl
+python -m belief_eval figures results/*.jsonl --dataroot data/nuscenes   # PNGs in figures/
 ```
 
 `run` appends to its output file and skips finished (sequence, mode) pairs, so an interrupted run
 can be restarted with the same command.
 
 Tests: `python -m unittest discover tests`
+
+Image crops in `figures/examples_*.png` are from the nuScenes dataset (Motional), used under
+CC BY-NC-SA 4.0 for non-commercial research: <https://www.nuscenes.org/terms-of-use>.

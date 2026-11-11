@@ -32,6 +32,12 @@ def main():
     s.add_argument("results", nargs="+")
     s.add_argument("--n-boot", type=int, default=1000)
 
+    g = sub.add_parser("figures", help="render report figures from results")
+    g.add_argument("results", nargs="+")
+    g.add_argument("--sequences", default="sequences_trainval.jsonl")
+    g.add_argument("--dataroot", help="nuScenes root; if given, also draws example frame strips")
+    g.add_argument("--out", default="figures")
+
     a = p.parse_args()
     if a.cmd == "mine":
         seqs = mine.mine(a.dataroot, a.version, a.category, a.object_name, a.length,
@@ -50,7 +56,13 @@ def main():
         for path in a.results:
             with open(path, encoding="utf-8") as f:
                 results += [json.loads(line) for line in f]
-        print(json.dumps(metrics.summarize(results, a.n_boot), indent=2))
+        if a.cmd == "score":
+            print(json.dumps(metrics.summarize(results, a.n_boot), indent=2))
+        else:
+            from . import figures
+            with open(a.sequences, encoding="utf-8") as f:
+                seqs = {s["id"]: s for s in map(json.loads, f)}
+            print("figures ->", a.out, figures.make_all(results, seqs, a.out, a.dataroot))
 
 
 if __name__ == "__main__":
