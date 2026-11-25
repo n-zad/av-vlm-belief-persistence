@@ -1,0 +1,351 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\usepackage{cite}
+
+\graphicspath{{../figures/}{figures/}} % repo layout, or flat Overleaf upload
+% Values still to be measured (Colab notebook step 6) or links still to be added.
+\newcommand{\tbd}[1]{\textcolor{red}{\textbf{#1}}}
+
+\begin{document}
+
+\title{History Overrides Perception: Hallucinated Belief Persistence\\in Vision-Language Models for Sequential Driving Perception}
+
+\author{
+\IEEEauthorblockN{Nickzad Bayati and Toney Zhen}
+\IEEEauthorblockA{Department of Computer Engineering, San Jos\'e State University\\
+Code: \url{https://github.com/n-zad/av-vlm-belief-persistence}\quad
+Video demo: \tbd{[add link]}}
+}
+
+\maketitle
+
+\begin{abstract}
+Vision-language models (VLMs) are increasingly proposed as perception and reasoning components for autonomous vehicles, where they are queried repeatedly over a stream of camera frames. We study whether a VLM that has wrongly reported that no pedestrian is present keeps that belief after the pedestrian becomes clearly visible. We mine 145 six-frame front-camera sequences from nuScenes in which a pedestrian goes from 0--40\% to 80--100\% visible, and query Qwen2.5-VL-7B and LLaVA-OneVision-7B on every frame in three modes: stateless (each frame alone), stateful (one conversation that includes the model's own earlier answers), and stateful with an instruction to reconsider. The first frame is identical across modes and produced identical answers in all 145 sequences for both models, so the history is the only difference. Conversation history lowers post-evidence accuracy by 29 points (95\% CI 23--35) for Qwen and 18 points (12--25) for LLaVA. On evidence frames each model detects without history, it still detects the pedestrian with history in only 22\% (Qwen) and 73\% (LLaVA) of sequences. The mechanism is answer copying: with history, 84\% and 93\% of answers repeat the previous answer verbatim, and after a previous ``no'' the models detect a clearly visible pedestrian in only 13\% and 24\% of cases. Instructing the model to reconsider does not help; only resetting the history does. We release the sequence mining, evaluation and analysis pipeline.
+\end{abstract}
+
+\begin{IEEEkeywords}
+vision-language models, hallucination, autonomous driving, temporal consistency, evaluation
+\end{IEEEkeywords}
+
+% ---------------------------------------------------------------------------
+\section{Introduction}
+
+Vision-language models are being integrated into autonomous-driving stacks as scene describers, question answerers and driving assistants~\cite{guo2024vlmauto,xie2025drivebench,lin2025continual}. In deployment such a model does not see one image: it is queried every few hundred milliseconds, and the simplest way to give it context is to keep the conversation, so that each new frame arrives together with the model's earlier frames and answers.
+
+This creates a safety risk that single-image benchmarks cannot expose. If the model wrongly reports that no pedestrian is present while the pedestrian is occluded, its own ``no'' becomes part of the context for every later frame. When the pedestrian then steps into full view, the model may defer to its earlier answer instead of the new image. In driving, that is a missed pedestrian at exactly the moment the evidence is clearest.
+
+Measuring this effect is hard for three reasons. First, it needs sequences with temporal ground truth in which the evidence changes from ambiguous to clear. Second, a wrong answer on a clear frame can come from poor perception rather than from the history, so the two must be separated. Third, the comparison must hold everything except the history fixed. Existing work evaluates VLMs on single frames, on corrupted inputs~\cite{xie2025drivebench}, or on the consistency of repeated answers~\cite{chang2026futurevqa}, and object-hallucination benchmarks~\cite{li2023pope,rohrbach2018chair} use single images.
+
+We address these with a controlled stateful-versus-stateless protocol on nuScenes~\cite{caesar2020nuscenes}. Our contributions are:
+\begin{itemize}
+  \item A \textbf{sequence-mining procedure} that extracts 145 front-camera sequences in which a pedestrian goes from at most 40\% to at least 80\% visible, using only the nuScenes metadata and camera geometry.
+  \item A \textbf{controlled protocol} that runs each sequence statelessly, statefully and with a reconsider instruction, verified to differ only in the history (identical frame-0 answers in 145/145 sequences for both models).
+  \item A \textbf{perception-controlled metric}, visible-without-history accuracy, that counts only evidence frames the model detects without history, so that any remaining error is caused by the history.
+  \item An \textbf{empirical study} of Qwen2.5-VL-7B~\cite{bai2025qwen25vl} and LLaVA-OneVision-7B~\cite{li2024llavaov} showing a 29- and 18-point accuracy loss from history, traced to verbatim answer copying.
+  \item A \textbf{negative result}: a prompt-level reconsider instruction does not reduce persistence for either model, while resetting the history does.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Related Work}
+
+\textbf{VLMs for autonomous driving.} VLM-Auto~\cite{guo2024vlmauto} fine-tunes a VLM as a driving assistant integrated with CARLA and ROS2. Lin et al.~\cite{lin2025continual} study continual learning for driving visual question answering on DriveLM. DriveBench~\cite{xie2025drivebench} evaluates VLMs on clean, corrupted and text-only inputs and finds that they often answer from priors rather than from the image. These works evaluate one input at a time; we evaluate how answers evolve across a sequence.
+
+\textbf{Temporal reliability and error persistence.} FutureVQA~\cite{chang2026futurevqa} shows that driving VLMs give inconsistent and poorly timed predictions about how scenes evolve. The DIQ-H benchmark~\cite{wan2025diqh} measures, among other weaknesses, errors that persist across continuous sequences, and proposes iterative refinement of annotations. In language models, Zhang et al.~\cite{zhang2023snowball} show that an early hallucination leads the model to produce further claims consistent with it. Our study isolates the persistence effect for visual beliefs with a paired stateful-versus-stateless design and a perception-controlled metric.
+
+\textbf{Object hallucination.} CHAIR~\cite{rohrbach2018chair} and POPE~\cite{li2023pope} measure objects described or affirmed although absent. We study the converse failure, which matters most in driving: denying a pedestrian who is present, and continuing to deny it once the pedestrian is clearly visible.
+
+\textbf{Object permanence.} BeyondSight~\cite{papais2026beyondsight} keeps hypotheses about occluded road users inside an end-to-end driving model, so that temporarily invisible actors are not forgotten. Our finding is the mirror image: a VLM keeps a belief that an actor is \emph{absent} after the actor reappears.
+
+\textbf{Models.} We evaluate two open 7B VLMs that support multi-image conversations: Qwen2.5-VL~\cite{bai2025qwen25vl}, with a dynamic-resolution vision encoder, and LLaVA-OneVision~\cite{li2024llavaov}, which tiles each image at high resolution. Both run with 4-bit weights~\cite{dettmers2023qlora} on a single 16\,GB GPU.
+
+% ---------------------------------------------------------------------------
+\section{Methodology}
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\small, node distance=4mm and 5mm,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=12mm, text width=24mm, fill=gray!6},
+  data/.style={draw, align=center, minimum height=12mm, text width=22mm, fill=blue!6},
+  arr/.style={-{Stealth[length=2mm]}, thick}]
+  \node[data] (meta) {nuScenes\\metadata\\(850 scenes)};
+  \node[box, right=of meta] (proj) {Project boxes\\into CAM\_FRONT\\(pose, intrinsics)};
+  \node[box, right=of proj] (filt) {Visibility, size\\and occlusion\\filters};
+  \node[data, right=of filt] (seq) {145 sequences\\$6$ frames each\\804 images};
+  \node[box, right=of seq] (run) {VLM runner\\stateless / stateful\\/ reconsider};
+  \node[box, right=of run] (parse) {JSON answer\\parser};
+  \node[box, below=8mm of run] (metric) {Metrics with\\bootstrap 95\% CIs};
+  \node[box, left=of metric] (fig) {Figures and\\ablations};
+  \node[data, right=of metric] (res) {435 runs\\per model\\(2{,}610 answers)};
+  \draw[arr] (meta) -- (proj);
+  \draw[arr] (proj) -- (filt);
+  \draw[arr] (filt) -- (seq);
+  \draw[arr] (seq) -- (run);
+  \draw[arr] (run) -- (parse);
+  \draw[arr] (parse) |- (res);
+  \draw[arr] (res) -- (metric);
+  \draw[arr] (metric) -- (fig);
+  \begin{scope}[on background layer]
+    \node[draw=gray, dashed, rounded corners, fit=(meta)(proj)(filt), inner sep=2.5mm, label={[font=\footnotesize]above:Sequence mining (CPU, raw JSON tables)}] {};
+    \node[draw=gray, dashed, rounded corners, fit=(run)(parse), inner sep=2.5mm, label={[font=\footnotesize]above:Inference (Colab T4, 4-bit)}] {};
+  \end{scope}
+\end{tikzpicture}
+\caption{Pipeline. Sequences are mined on a CPU from the nuScenes metadata alone; only the 804 images they use are extracted. Each sequence is run in three modes, answers are parsed from JSON, and metrics are computed with bootstrap confidence intervals.}
+\label{fig:pipeline}
+\end{figure*}
+
+Fig.~\ref{fig:pipeline} shows the pipeline. It reads the raw nuScenes JSON tables directly, without the nuScenes development kit, and keeps only front-camera keyframes and pedestrian annotations in memory so that the full trainval metadata loads in about 40\,s.
+
+\subsection{Sequence mining}
+
+For each pedestrian annotation with global position $\mathbf{p}_g$ we compute its position in the front camera frame,
+\begin{equation}
+\mathbf{p}_c = R_c^{\top}\!\left(R_e^{\top}(\mathbf{p}_g - \mathbf{t}_e) - \mathbf{t}_c\right),
+\end{equation}
+where $(R_e, \mathbf{t}_e)$ is the ego pose of that camera image and $(R_c, \mathbf{t}_c)$ the camera extrinsics. The pedestrian is in view if $z_c > 0.5$\,m and its projected centre $K\mathbf{p}_c / z_c$ falls inside the $1600\times900$ image, with $K$ the intrinsic matrix. Its on-screen height is approximated as $h_{\text{px}} \approx f_x h / z_c$, with $h$ the box height and $f_x$ the focal length.
+
+A sequence is $T=6$ consecutive keyframes (3\,s at 2\,Hz) in which one pedestrian stays in view, and it must satisfy:
+\begin{enumerate}
+  \item the first frame has nuScenes visibility level 1 (0--40\% visible);
+  \item the \emph{evidence frame} $k$ is the first with level 4 (80--100\%), with $h_{\text{px}} \ge 40$ at frame $k$;
+  \item every frame before $k$ has level $\le 2$, and no other pedestrian is clearly visible (level $\ge 3$) before $k$;
+  \item $k \le T-2$, so that at least one frame follows the evidence.
+\end{enumerate}
+Condition~3 removes sequences in which the question can be answered from a different pedestrian. One sequence is kept per pedestrian so sequences do not overlap. On nuScenes v1.0-trainval this yields 145 sequences from 120 scenes with $k \in \{1,\dots,4\}$; the mini split yields only 2.
+
+\subsection{Query and modes}
+
+At every frame the model receives the image and the prompt ``You are the perception module of an autonomous vehicle. The image is from the front camera. Is there a pedestrian in the image?'' and must answer in JSON with \emph{present} (yes/no), \emph{confidence}, \emph{evidence} and a driving \emph{action} (proceed, slow or stop). Let $q$ be this prompt, $I_t$ the image at frame $t$ and $a_t$ the answer. The three modes are
+\begin{align}
+\text{stateless:}\quad & a_t = f(I_t, q),\\
+\text{stateful:}\quad & a_t = f\big((I_0,q,a_0),\dots,(I_{t-1},q,a_{t-1}), I_t, q\big),\\
+\text{reconsider:}\quad & \text{stateful with } q \leftarrow r \oplus q \text{ for } t>0,
+\end{align}
+where $r$ is ``This is a new frame. Your earlier answers may have been wrong; judge only from this image.'' Stateless inference is equivalent to resetting the history at every frame. At $t=0$ all three modes receive the same input.
+
+\subsection{Metrics}
+
+Ground truth is ``present'' on every frame. Let $c^m_{s,t}\in\{0,1\}$ indicate a correct answer in mode $m$ for sequence $s$ at frame $t$.
+
+\textbf{Visible-without-history accuracy} is our headline metric. With $V=\{s : c^{\text{SL}}_{s,k_s}=1\}$ the sequences whose evidence frame the model detects statelessly,
+\begin{equation}
+\text{VWH}^m = \frac{1}{|V|}\sum_{s\in V} c^m_{s,k_s}.
+\end{equation}
+Because every frame in $V$ is perceivable by the same model without history, $1-\text{VWH}^m$ is the share of detections removed by the history.
+
+\textbf{Post-evidence accuracy} $\text{PEA}^m_s$ is the mean of $c^m_{s,t}$ over $t \ge k_s$; we report the paired difference $\Delta = \frac{1}{N}\sum_s (\text{PEA}^{\text{SF}}_s - \text{PEA}^{\text{SL}}_s)$.
+\textbf{Persistence rate} is the share of sequences wrong at $k-1$ that are still wrong at $k+1$, after two contradictory frames.
+\textbf{Correction latency} is the number of frames from $k$ to the first correct answer.
+\textbf{Copy rate} is the share of answers at $t\ge1$ identical, character for character, to the answer at $t-1$.
+\textbf{Safety-action accuracy} compares the predicted action with a rule-based label (stop within 15\,m and 2.5\,m of the camera axis, slow within 15\,m, otherwise proceed).
+All intervals are 95\% percentile bootstrap intervals over sequences with 1{,}000 resamples~\cite{efron1979bootstrap}.
+
+% ---------------------------------------------------------------------------
+\section{Experiments and Ablation Studies}
+
+\subsection{Setup}
+
+Both models run on a Google Colab NVIDIA T4 (16\,GB) with Hugging Face Transformers, 4-bit bitsandbytes weights and fp16 compute, greedy decoding and at most 128 new tokens. Qwen2.5-VL-7B-Instruct receives images resized to a longest side of 1024\,px. LLaVA-OneVision-Qwen2-7B tiles each image, so a six-frame history at 1024\,px needs 27.7k prompt tokens and exhausts the T4 (Table~\ref{tab:profile}); it therefore runs at 768\,px. Each model answers 145 sequences $\times$ 3 modes $\times$ 6 frames $=2{,}610$ queries. The stateless mode is the baseline, equivalent to resetting the history.
+
+\subsection{Main results}
+
+\begin{table}[t]
+\centering
+\caption{Main results (145 sequences per model; 95\% bootstrap CIs).}
+\label{tab:main}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Model & Metric & Stateless & Stateful & Reconsider\\
+\midrule
+\multirow{4}{*}{Qwen}  & Post-evid. acc. (\%) & 38 [32,45] & 9 [5,13] & 7 [4,10]\\
+                       & Persistence (\%)     & 67 [59,75] & 96 [92,99] & 96 [93,99]\\
+                       & Wrong at $k{-}1$ ($n$) & 125 & 139 & 139\\
+                       & Never corrected ($n$) & 60 & 122 & 126\\
+\midrule
+\multirow{4}{*}{LLaVA} & Post-evid. acc. (\%) & 84 [79,88] & 65 [58,73] & 67 [59,74]\\
+                       & Persistence (\%)     & 28 [18,40] & 82 [73,90] & 82 [71,92]\\
+                       & Wrong at $k{-}1$ ($n$) & 60 & 62 & 62\\
+                       & Never corrected ($n$) & 5 & 49 & 45\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:main} gives the main results. The paired stateful-minus-stateless difference in post-evidence accuracy is $-29$ points [$-35$, $-23$] for Qwen and $-18$ points [$-25$, $-12$] for LLaVA; both exceed the 10-point threshold we set in advance for a meaningful effect. History also raises the persistence rate from 67\% to 96\% for Qwen and from 28\% to 82\% for LLaVA.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{visible_without_history.pdf}
+\caption{Visible-without-history accuracy. Among evidence frames each model answers correctly without history (Qwen $n=50$, LLaVA $n=119$), the share it still answers correctly with history. Error bars: 95\% bootstrap CIs.}
+\label{fig:vwh}
+\end{figure*}
+
+The models differ sharply in perception, so post-evidence accuracy alone mixes two effects. Fig.~\ref{fig:vwh} removes perception: on evidence frames that the model detects without history, Qwen with history still detects the pedestrian in 22\% [12, 34] of sequences and LLaVA in 73\% [65, 81]. History therefore removes most of Qwen's correct detections and about a quarter of LLaVA's.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{yes_by_frame.pdf}
+\caption{Share of answers reporting a pedestrian, by frame relative to the evidence frame (offsets reached by at least 20 sequences). Without history, both models respond to the evidence frame; with history, the response largely disappears.}
+\label{fig:frames}
+\end{figure*}
+
+Fig.~\ref{fig:frames} shows the same effect frame by frame. Without history, the share of ``present'' answers rises at the evidence frame, from 14\% to 35\% for Qwen and from 58\% to 82\% for LLaVA. With history it stays near 7\% for Qwen and rises only from 57\% to 64\% for LLaVA.
+
+\subsection{Mechanism: answer copying}
+
+\begin{table}[t]
+\centering
+\caption{Answer copying across frames ($t\ge1$, 725 per mode).}
+\label{tab:copy}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+& \multicolumn{2}{c}{Qwen} & \multicolumn{2}{c}{LLaVA}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+& Stateless & Stateful & Stateless & Stateful\\
+\midrule
+Identical to previous answer (\%) & 31 & 84 & 37 & 93\\
+``no''$\to$``yes'' switches ($n$) & 87 & 18 & 90 & 15\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+With history, both models mostly repeat their previous answer character for character, including the evidence sentence (Table~\ref{tab:copy}). Without history the same models switch from ``no'' to ``yes'' 87 and 90 times across the 145 sequences; with history only 18 and 15 times.
+
+\subsection{Ablations}
+
+\begin{table}[t]
+\centering
+\caption{Ablations on the visible-without-history subset: stateful accuracy (\%) on the evidence frame. $n$ in parentheses.}
+\label{tab:ablation}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+Factor & Level & Qwen & LLaVA\\
+\midrule
+\multirow{2}{*}{Stateful answer at $k{-}1$} & ``yes'' & 100 (5) & 100 (77)\\
+                                            & ``no''  & 13 (45) & 24 (42)\\
+\midrule
+\multirow{4}{*}{\shortstack[l]{Evidence index $k$\\(earlier turns)}} & 1 & 23 (22) & 69 (49)\\
+                                         & 2 & 21 (14) & 83 (29)\\
+                                         & 3 & 0 (7)   & 73 (15)\\
+                                         & 4 & 43 (7)  & 69 (26)\\
+\midrule
+\multirow{3}{*}{\shortstack[l]{Pedestrian height\\at $k$ (px)}} & $<60$  & 9 (11)  & 62 (47)\\
+                                            & 60--89 & 6 (18)  & 78 (45)\\
+                                            & $\ge 90$ & 43 (21) & 85 (27)\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:ablation} varies one factor at a time on the visible-without-history subset.
+
+\textbf{Previous answer.} The stateful answer on the clearly visible frame is almost fully determined by the answer one frame earlier. After a ``yes'' both models stay correct (100\%); after a ``no'', only 13\% (Qwen) and 24\% (LLaVA) of pedestrians that the same model sees without history are reported. This is the most direct evidence that the history, not the image, drives the error.
+
+\textbf{History length.} The number of earlier turns before the evidence frame ($k=1$ to 4) shows no consistent trend for either model, so a single wrong turn is enough to anchor the answer.
+
+\textbf{Pedestrian size.} Larger pedestrians partly overcome the history: stateful accuracy rises to 43\% (Qwen) and 85\% (LLaVA) for pedestrians at least 90\,px tall. Size also governs stateless perception: without history Qwen detects 16\% of evidence-frame pedestrians under 60\,px and all 5 above 150\,px, while LLaVA detects 70\% and 100\% (Fig.~\ref{fig:size}).
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{seen_by_size.pdf}
+\caption{Stateless detection on the evidence frame by pedestrian height at full resolution. Qwen misses most pedestrians under 90\,px, which is why the visible-without-history subset is needed.}
+\label{fig:size}
+\end{figure*}
+
+\textbf{Mining thresholds.} Table~\ref{tab:mining} shows how the sequence count depends on the sequence length and minimum pedestrian height. We chose 6 frames and 40\,px: it is the only setting above 100 sequences that keeps four frames after the earliest evidence frame, which the latency metric needs.
+
+\begin{table}[t]
+\centering
+\caption{Sequences mined from nuScenes v1.0-trainval.}
+\label{tab:mining}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& \multicolumn{3}{c}{Minimum height at evidence frame}\\
+\cmidrule(lr){2-4}
+Frames per sequence & 40\,px & 60\,px & 80\,px\\
+\midrule
+4 & 177 & 104 & 52\\
+5 & 163 & 91 & 47\\
+6 & \textbf{145} & 81 & 40\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Mitigation.} The reconsider instruction gives 7\% (Qwen) and 67\% (LLaVA) post-evidence accuracy, no better than plain history (Table~\ref{tab:main}), and 16\% [6, 26] and 73\% [65, 81] visible-without-history accuracy. Its copy rate is unchanged (83\% and 93\%). Resetting the history (stateless) restores accuracy to 38\% and 84\%.
+
+\subsection{Latency and memory}
+
+\begin{table}[t]
+\centering
+\caption{Prompt length per query, measured with each model's own processor on a real sequence, for a single frame (stateless) and the last frame of a six-frame history (stateful).}
+\label{tab:profile}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+& \multicolumn{2}{c}{Prompt tokens} & & \\
+\cmidrule(lr){2-3}
+Model, image size & 1 frame & 6-frame hist. & Ratio & Fits T4?\\
+\midrule
+Qwen, 1024\,px  & 875     & 5{,}345  & 6.1$\times$ & Yes\\
+Qwen, 768\,px   & 503     & 3{,}113  & 6.2$\times$ & Yes\\
+LLaVA, 1024\,px & 4{,}586 & 27{,}661 & 6.0$\times$ & No (OOM)\\
+LLaVA, 768\,px  & 2{,}464 & 14{,}929 & 6.1$\times$ & Yes\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Stateful inference grows the prompt linearly with the number of frames: the last query of a six-frame history is about six times longer than a stateless query (Table~\ref{tab:profile}). LLaVA's tiling makes each frame 2.8$\times$ as long as Qwen's even at a smaller image size. At 1024\,px its six-frame prompt reaches 27{,}661 tokens, and the run failed with 13.7\,GiB in use on the 14.6\,GiB device; 768\,px halves the prompt and fits. Since attention cost grows with prompt length, keeping the history is not only less accurate than resetting it but also more expensive per query. Wall-clock latency and peak memory per query were not instrumented in these runs; the released code now records both.
+
+\subsection{Qualitative results}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{{examples_Qwen2.5-VL-7B-Instruct}.pdf}\\[2mm]
+\includegraphics[width=\textwidth]{examples_llava-onevision-qwen2-7b-ov-hf.pdf}
+\caption{Example sequences, cropped around the annotated pedestrian (circled); the evidence frame has a black border. Top: Qwen2.5-VL. Bottom: LLaVA-OneVision. In each, the model detects the pedestrian without history but keeps answering ``no'' with history.}
+\label{fig:examples}
+\end{figure*}
+
+Fig.~\ref{fig:examples} shows two sequences per model. In the second LLaVA example, the model without history detects the pedestrian on five consecutive frames, while the model with history answers ``no'' on all six.
+
+% ---------------------------------------------------------------------------
+\section{Failure Analysis, Negative Results and Limitations}
+
+\textbf{Anchoring on the model's own answer.} The dominant failure is that a stateful model treats its previous answer as evidence. After a ``no'' at $k-1$, 87\% (Qwen) and 76\% (LLaVA) of perceivable pedestrians are missed on the clearly visible frame. The root cause is visible in the outputs: the answer, including its free-text evidence (``There are no pedestrians visible in the image.''), is copied verbatim.
+
+\textbf{Negative result: prompting does not fix it.} Telling the model that its earlier answers may be wrong changes neither accuracy nor the copy rate. The bias is not removed by an instruction placed in the same context that contains the anchoring answers; only removing those answers helps.
+
+\textbf{Overconfidence.} Qwen reports a mean confidence of 0.90 on wrong answers and 0.80--0.86 on correct ones in every mode, so its confidence cannot flag persistent errors. LLaVA reports a confidence near 0 for every ``no'' answer, treating the field as a probability of presence, so its confidences are not comparable.
+
+\textbf{Perception failures.} Qwen at 1024\,px detects only 16\% of pedestrians under 60\,px on the evidence frame, even without history. We handle this with the visible-without-history subset instead of reporting raw accuracy.
+
+\textbf{Format failures.} LLaVA answered with a bare ``No'' on 107 of 2{,}610 frames. The yes/no answer is still recovered, but no action is given; these frames count as unsafe, which inflates LLaVA's unsafe-action rate (7.6\% stateless, 10.1\% stateful).
+
+\textbf{Label failures.} nuScenes visibility is aggregated over all six cameras, so a frame labelled 80--100\% visible can be occluded in the front camera. We found such a case by inspection (a pedestrian behind a passing van); the visibility labels were not reviewed manually. The visible-without-history metric is robust to this because it only counts frames the model itself detects.
+
+\textbf{Limitations.} (i) There are no pedestrian-free control sequences, so false positives are not measured; LLaVA reports a pedestrian on 52--59\% of frames before the evidence frame, which may partly be a bias towards ``yes''. (ii) Action labels are rule-based and 92\% are ``proceed'', so safety-action accuracy (Qwen 50--53\%, LLaVA 31--38\% balanced) is weak evidence. (iii) The two models use different image sizes to fit the GPU, so absolute accuracies are not directly comparable; each model's history effect is. (iv) Only object presence is tested, not attributes or spatial relations. (v) Two 7B models were evaluated, both with 4-bit weights. (vi) Inference cost is reported as prompt length; per-query latency and peak memory were not timed.
+
+% ---------------------------------------------------------------------------
+\section{Conclusion and Future Work}
+
+Keeping a conversation history makes vision-language models repeat their earlier ``no pedestrian'' answers after the pedestrian becomes clearly visible. Across 145 nuScenes sequences, history removes 78\% of Qwen2.5-VL's and 27\% of LLaVA-OneVision's otherwise correct detections on the clearest frame, and the mechanism is verbatim answer copying. A reconsider instruction does not help; resetting the history does, and is also several times cheaper. For driving systems this argues against feeding a VLM its own unverified past answers.
+
+Next steps are: (1) pedestrian-free control sequences to measure false positives and test whether false ``yes'' answers persist the same way; (2) intermediate history designs, such as a sliding window or earlier images without earlier answers; (3) per-camera visibility from geometric occlusion reasoning or manual review; (4) safety labels from human annotation; and (5) more and larger models at matched image sizes.
+
+\section*{Acknowledgment}
+nuScenes images are used under CC BY-NC-SA 4.0. Experiments ran on Google Colab.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

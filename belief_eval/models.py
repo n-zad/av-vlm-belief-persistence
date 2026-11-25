@@ -54,7 +54,14 @@ class HFModel:
         text = self.processor.apply_chat_template(chat, add_generation_prompt=True)
         inputs = self.processor(text=[text], images=images or None,
                                 return_tensors="pt").to(self.model.device)
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
         out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens, do_sample=False)
+        # read by run_sequence for latency/memory profiling
+        self.last_stats = {"prompt_tokens": int(inputs["input_ids"].shape[1]),
+                           "peak_gb": round(torch.cuda.max_memory_allocated() / 2**30, 2)
+                           if torch.cuda.is_available() else None}
         return self.processor.batch_decode(out[:, inputs["input_ids"].shape[1]:],
                                            skip_special_tokens=True)[0]
 

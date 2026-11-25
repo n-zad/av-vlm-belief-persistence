@@ -7,6 +7,7 @@ reconsider: stateful, plus a nudge to judge each new frame on its own (the mitig
 import json
 import os
 import re
+import time
 
 MODES = ("stateless", "stateful", "reconsider")
 
@@ -53,11 +54,14 @@ def run_sequence(model, seq, mode, dataroot):
         msg = {"role": "user", "content": [
             {"type": "image", "path": os.path.join(dataroot, f["image"])},
             {"type": "text", "text": text}]}
+        start = time.perf_counter()
         raw = model.generate([msg] if mode == "stateless" else history + [msg])
+        latency = round(time.perf_counter() - start, 3)
         if mode != "stateless":
             history += [msg, {"role": "assistant", "content": [{"type": "text", "text": raw}]}]
         frames.append({"t": t, "raw": raw, **parse(raw),
-                       "gt_present": f["gt_present"], "gt_action": f["gt_action"]})
+                       "gt_present": f["gt_present"], "gt_action": f["gt_action"],
+                       "latency_s": latency, **getattr(model, "last_stats", {})})
     return {"id": seq["id"], "mode": mode, "evidence_index": seq["evidence_index"], "frames": frames}
 
 

@@ -15,6 +15,13 @@ def short(model):
     return model.split("/")[-1]
 
 
+def save(fig, out, name):
+    """PNG for the README, PDF (vector, white page) for the LaTeX paper."""
+    fig.savefig(os.path.join(out, name + ".png"), dpi=200)
+    fig.savefig(os.path.join(out, name + ".pdf"), facecolor="white")
+    return os.path.join(out, name + ".png")
+
+
 def setup():
     import matplotlib
     matplotlib.use("Agg")
@@ -69,7 +76,7 @@ def yes_by_frame(plt, by_model, out):
     axes[0].set_ylabel("Says “present” (%)")
     axes[0].legend(loc="upper left", frameon=False, fontsize=9)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(os.path.join(out, "yes_by_frame.png"), dpi=200)
+    save(fig, out, "yes_by_frame")
 
 
 def visible_without_history(plt, summary, out):
@@ -92,7 +99,7 @@ def visible_without_history(plt, summary, out):
     fig.text(0.01, 0.01, "Error bars: 95% bootstrap CI. “No history” is 100% by construction (it defines the subset).",
              color=INK2, fontsize=8)
     fig.tight_layout(rect=(0, 0.04, 1, 0.94))
-    fig.savefig(os.path.join(out, "visible_without_history.png"), dpi=200)
+    save(fig, out, "visible_without_history")
 
 
 def by_size(plt, by_model, seqs, out):
@@ -113,7 +120,7 @@ def by_size(plt, by_model, seqs, out):
         ax.set(title=short(model), xlabel="Pedestrian height on the clear frame (px, 1600×900 image)", ylim=(0, 120))
     axes[0].set_ylabel("Says “present” (%)")
     fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(os.path.join(out, "seen_by_size.png"), dpi=200)
+    save(fig, out, "seen_by_size")
 
 
 def copying(plt, by_model, out):
@@ -128,7 +135,7 @@ def copying(plt, by_model, out):
         ax.set(title=short(model), ylim=(0, 110))
     axes[0].set_ylabel("Identical to previous answer (%)")
     fig.tight_layout(rect=(0, 0, 1, 0.94))
-    fig.savefig(os.path.join(out, "copying.png"), dpi=200)
+    save(fig, out, "copying")
 
 
 def examples(plt, model, recs, seqs, dataroot, out, n=2, crop=(560, 315)):
@@ -165,9 +172,7 @@ def examples(plt, model, recs, seqs, dataroot, out, n=2, crop=(560, 315)):
             ax.set_xlabel(f"No history: {say(r_by[(i, 'stateless')]['frames'][t])}\n"
                           f"With history: {say(r_by[(i, 'stateful')]['frames'][t])}", fontsize=8, color=INK)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
-    path = os.path.join(out, f"examples_{short(model)}.png")
-    fig.savefig(path, dpi=200)
-    return path
+    return save(fig, out, f"examples_{short(model)}")
 
 
 def make_all(results, seqs, out, dataroot=None):

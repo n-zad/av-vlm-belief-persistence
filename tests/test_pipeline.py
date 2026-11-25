@@ -104,6 +104,7 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(s["stateless"]["n_hallucinated"], 0)
         self.assertEqual(s["stateless"]["safety_balanced_accuracy"], 1.0)
         self.assertEqual(s["stateful_minus_stateless_post_acc"]["mean"], -0.5)
+        self.assertIn("latency_s_median", s["stateful"])  # timing recorded for every call
         # stateless sees the pedestrian on the evidence frame; stateful (with history) does not
         self.assertEqual(s["visible_without_history"]["n"], 1)
         self.assertEqual(s["visible_without_history"]["stateful"]["evidence_frame_accuracy"], 0.0)
@@ -121,9 +122,9 @@ class TestPipeline(unittest.TestCase):
             results = [{"model": "m", **run.run_sequence(ScriptedModel(a), seq, mode, root)}
                        for mode, a in [("stateless", [answer("yes", "stop")] * 6), ("stateful", stuck)]]
             out = os.path.join(root, "figs")
+            names = ["copying", "examples_m", "seen_by_size", "visible_without_history", "yes_by_frame"]
             self.assertEqual(figures.make_all(results, {seq["id"]: seq}, out, root),
-                             ["copying.png", "examples_m.png", "seen_by_size.png",
-                              "visible_without_history.png", "yes_by_frame.png"])
+                             sorted(n + ext for n in names for ext in (".pdf", ".png")))
 
     def test_stateful_sends_history(self):
         seen = []

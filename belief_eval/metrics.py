@@ -62,6 +62,12 @@ def summarize(results, n_boot=1000, seed=0):
                 "safety_balanced_accuracy": bal_acc,
                 "unsafe_action_rate": unsafe,
             }
+            # profiling fields exist only for runs made after they were added
+            frames = [f for r in recs for f in r["frames"]]
+            for key, stat in (("latency_s", median), ("prompt_tokens", max), ("peak_gb", max)):
+                vals = [f[key] for f in frames if f.get(key) is not None]
+                if vals:
+                    per_mode[mode][f"{key}_{stat.__name__}"] = stat(vals)
         if {"stateful", "stateless"} <= per_mode.keys():
             # paired by sequence: the same later frames, with vs without the earlier history
             acc = {m: {r["id"]: sequence_stats(r)["post_acc"] for r in results
