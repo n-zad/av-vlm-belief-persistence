@@ -58,7 +58,7 @@ needed_images.txt       the 804 CAM_FRONT images those sequences use
 Python 3.10+. Mining, scoring, figures and tests run on a CPU:
 
 ```bash
-pip install numpy pillow matplotlib
+pip install numpy pillow matplotlib tqdm
 ```
 
 Model inference needs a CUDA GPU (we used a 16 GB T4) and the rest of `requirements.txt`:
