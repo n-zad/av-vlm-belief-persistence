@@ -3,13 +3,27 @@
 messages: [{"role": "user"|"assistant", "content": [{"type": "image", "path": ...} |
                                                      {"type": "text", "text": ...}]}]
 """
+from importlib import metadata
+
 from PIL import Image
 
 MOCK_ANSWER = '{"present": "yes", "confidence": 1.0, "evidence": "mock", "action": "slow"}'
 
 
+def package_versions(*names):
+    out = {}
+    for n in names:
+        try:
+            out[n] = metadata.version(n)
+        except metadata.PackageNotFoundError:
+            out[n] = None
+    return out
+
+
 class ScriptedModel:
     """Returns canned answers in order, then a fixed answer. For tests and dry runs without a GPU."""
+
+    config = {"model": "scripted"}
 
     def __init__(self, answers=()):
         self.answers = list(answers)
@@ -37,6 +51,10 @@ class HFModel:
         self.processor = AutoProcessor.from_pretrained(model_id)
         self.max_side = max_side  # downscale 1600x900 frames so multi-frame history fits in VRAM (lower it if OOM)
         self.max_new_tokens = max_new_tokens
+        # saved with every result line; run() refuses to resume a file written with other settings
+        self.config = {"model_id": model_id, "load_4bit": load_4bit, "max_side": max_side,
+                       "max_new_tokens": max_new_tokens, "do_sample": False,
+                       "versions": package_versions("torch", "transformers", "accelerate", "bitsandbytes")}
 
     def generate(self, messages):
         images, chat = [], []

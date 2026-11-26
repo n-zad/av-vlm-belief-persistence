@@ -176,6 +176,8 @@ def examples(plt, model, recs, seqs, dataroot, out, n=2, crop=(560, 315)):
 
 
 def make_all(results, seqs, out, dataroot=None):
+    # figures describe positive sequences; control sequences have no pedestrian to draw
+    results = [r for r in results if r.get("kind", "positive") == "positive"]
     plt = setup()
     os.makedirs(out, exist_ok=True)
     by_model = {}

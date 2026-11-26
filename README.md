@@ -44,14 +44,14 @@ with no action. Details in section 5 of the paper.
 ```
 belief_eval/            evaluation package (python -m belief_eval <command>)
   mine.py               mine sequences from the nuScenes JSON tables (no devkit needed)
-  run.py                query a model over sequences in stateless / stateful / reconsider mode
+  run.py                query a model over sequences in stateless / stateful / reconsider /
+                        planted_no / planted_yes mode
   models.py             Hugging Face VLM wrapper (+ a scripted mock model for tests)
   metrics.py            metrics with bootstrap 95% CIs, incl. visible-without-history
   figures.py            figures as PNG (README) and vector PDF (paper)
-  __main__.py           CLI: mine, run, score, figures
+  __main__.py           CLI: mine, mine-controls, run, score, figures
 notebooks/
-  colab_eval.ipynb      run a model on a Colab T4 (setup, smoke test, full run, scores, profiling)
-  colab_run_llava7b.ipynb  saved LLaVA run with outputs
+  colab_eval.ipynb      run a model on a Colab T4 (setup, smoke test, full run, scores)
 results/                raw model answers, one JSON line per (sequence, mode)
 figures/                generated figures (.png and .pdf)
 report/                 LaTeX paper (IEEE conference format) and bibliography
@@ -96,10 +96,15 @@ The evaluation needs only 804 front-camera images, not the full dataset.
 # 1. Mine the sequences (CPU, ~40 s; reproduces sequences_trainval.jsonl)
 python -m belief_eval mine --dataroot data/nuscenes --version v1.0-trainval --out sequences_trainval.jsonl
 
+# 1b. Mine pedestrian-free control sequences (CPU, metadata only); writes the image list they need
+python -m belief_eval mine-controls --dataroot data/nuscenes --out sequences_controls.jsonl \
+  --images-out needed_images_controls.txt
+#     then extract those images from each part:  tar -xzf <part>_keyframes.tgz -C data/nuscenes -T needed_images_controls.txt
+
 # 2. Dry run without a GPU
 python -m belief_eval run --dataroot data/nuscenes --sequences sequences_trainval.jsonl --model mock --limit 5 --out results/mock.jsonl
 
-# 3. Inference (GPU); ~2,610 queries per model
+# 3. Inference (GPU); 5 modes, ~3,700 queries per model (planted frames need no query)
 python -m belief_eval run --dataroot data/nuscenes --sequences sequences_trainval.jsonl \
   --model Qwen/Qwen2.5-VL-7B-Instruct --4bit --max-side 1024 --out results/results_qwen7b.jsonl
 python -m belief_eval run --dataroot data/nuscenes --sequences sequences_trainval.jsonl \
@@ -111,7 +116,9 @@ python -m belief_eval figures results/results_qwen7b.jsonl results/results_llava
 ```
 
 `run` appends to its output file and skips finished (sequence, mode) pairs, so an interrupted run
-resumes with the same command. Each answer records latency, prompt length and peak GPU memory.
+resumes with the same command. Each answer records latency, prompt length and peak GPU memory,
+and each line records the run config (image size, 4-bit flag, prompt hash, package versions);
+`run` refuses to resume a file written with a different config.
 
 **On Colab:** upload the 804 images as `cam_front_images.zip` to `MyDrive/cmpe249/`, open
 [notebooks/colab_eval.ipynb](https://colab.research.google.com/github/n-zad/av-vlm-belief-persistence/blob/main/notebooks/colab_eval.ipynb),

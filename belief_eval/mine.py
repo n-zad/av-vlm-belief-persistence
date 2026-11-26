@@ -10,6 +10,7 @@ visible (level >= 3) before it, so the evidence frame is the first unambiguous v
 """
 import json
 import os
+import random
 
 import numpy as np
 
@@ -40,6 +41,28 @@ def in_image(p_cam, intrinsic, width, height):
     return 0 <= u / w < width and 0 <= v / w < height
 
 
+def box_may_be_in_image(ann, ego_pose, calib, width, height):
+    """Conservative: True if any part of the 3D box could appear in the image.
+
+    Projects the 8 box corners; a box that straddles the camera plane counts as visible.
+    Used for control sequences, where a missed object would be a false "no pedestrian" label.
+    """
+    w, l, h = ann["size"]
+    signs = np.array([[1, 1, 1, 1, -1, -1, -1, -1], [1, -1, 1, -1, 1, -1, 1, -1], [1, 1, -1, -1, 1, 1, -1, -1]])
+    corners = quat_to_rot(ann["rotation"]) @ (signs * np.array([[l / 2], [w / 2], [h / 2]]))
+    corners += np.asarray(ann["translation"])[:, None]
+    p = quat_to_rot(ego_pose["rotation"]).T @ (corners - np.asarray(ego_pose["translation"])[:, None])
+    p = quat_to_rot(calib["rotation"]).T @ (p - np.asarray(calib["translation"])[:, None])
+    front = p[2] > 0.1
+    if not front.any():
+        return False
+    if not front.all():
+        return True
+    uv = np.asarray(calib["camera_intrinsic"]) @ p
+    u, v = uv[0] / uv[2], uv[1] / uv[2]
+    return u.max() >= 0 and u.min() < width and v.max() >= 0 and v.min() < height
+
+
 def safe_action(objects):
     """Heuristic ground-truth action from in-view objects' camera-frame positions.
 
@@ -57,7 +80,8 @@ def safe_action(objects):
 
 def load_tables(dataroot, version, category_prefix):
     """Load the tables, keeping only CAM_FRONT keyframes, their poses and target-category
-    annotations; trainval's full sample_data/ego_pose/sample_annotation would need >10 GB RAM."""
+    annotations; trainval's full sample_data/ego_pose/sample_annotation would need >10 GB RAM.
+    category_prefix may be a tuple of prefixes."""
     def table(name, keep=lambda r: True):
         with open(os.path.join(dataroot, version, name + ".json"), encoding="utf-8") as f:
             return {r["token"]: r for r in json.load(f) if keep(r)}
@@ -175,3 +199,66 @@ def mine(dataroot, version="v1.0-mini", category_prefix="human.pedestrian",
                     } for s, f in zip(window, seq)],
                 })
     return sequences
+
+
+# categories a VLM might call a pedestrian: nuScenes labels a cyclist as the bicycle, not as a person
+CONTROL_EXCLUDE = ("human.pedestrian", "vehicle.bicycle", "vehicle.motorcycle")
+
+
+def mine_controls(dataroot, positives, version="v1.0-trainval", n=75, length=6, seed=0,
+                  object_name="pedestrian", only_downloaded=False):
+    """Pedestrian-free control sequences: `length` consecutive CAM_FRONT keyframes in which no
+    pedestrian, bicycle or motorcycle box can be seen at all (any visibility, any part of the box).
+
+    Ground truth is "no" on every frame. Each control takes its evidence_index from a positive
+    sequence of the same scene (else a random positive), so planted modes get the same mix of
+    planted turns; for a control it only marks where the planted answers stop. Scenes that hold
+    positives are used first, one window per scene, then other scenes until n are found.
+    Absent annotations do not prove an empty frame (far pedestrians can be unlabelled), so
+    spot-check the result by eye.
+    """
+    t = load_tables(dataroot, version, CONTROL_EXCLUDE)
+    cams = {sd["sample_token"]: (sd, t["calibrated_sensor"][sd["calibrated_sensor_token"]])
+            for sd in t["sample_data"].values()}
+    if only_downloaded:
+        cams = {s: c for s, c in cams.items() if os.path.exists(os.path.join(dataroot, c[0]["filename"]))}
+    occupied = set()
+    for a in t["sample_annotation"].values():
+        s = a["sample_token"]
+        if s in cams and s not in occupied:
+            sd, calib = cams[s]
+            if box_may_be_in_image(a, t["ego_pose"][sd["ego_pose_token"]], calib, sd["width"], sd["height"]):
+                occupied.add(s)
+
+    rng = random.Random(seed)
+    k_by_scene = {}
+    for p in positives:
+        k_by_scene.setdefault(p["scene"], []).append(p["evidence_index"])
+    all_k = [p["evidence_index"] for p in positives]
+    windows = {}
+    for scene in sorted(t["scene"].values(), key=lambda r: r["name"]):
+        samples = scene_samples(t, scene)
+        ok = [i for i in range(len(samples) - length + 1)
+              if all(s in cams and s not in occupied for s in samples[i:i + length])]
+        if ok:
+            windows[scene["name"]] = (samples, ok)
+    preferred = [s for s in windows if s in k_by_scene]
+    others = [s for s in windows if s not in k_by_scene]
+    rng.shuffle(preferred)
+    rng.shuffle(others)
+
+    controls = []
+    for name in sorted((preferred + others)[:n]):
+        samples, ok = windows[name]
+        start = rng.choice(ok)
+        controls.append({
+            "id": f"{name}_control_{start}",
+            "scene": name,
+            "kind": "control",
+            "object": object_name,
+            "evidence_index": rng.choice(k_by_scene.get(name, all_k)),
+            "frames": [{"sample_token": s, "image": cams[s][0]["filename"],
+                        "gt_present": False, "gt_action": "proceed"}
+                       for s in samples[start:start + length]],
+        })
+    return controls

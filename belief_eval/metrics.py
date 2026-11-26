@@ -37,6 +37,8 @@ def safety(frames):
 
 
 def summarize(results, n_boot=1000, seed=0):
+    # these metrics assume a pedestrian is present; control sequences need their own
+    results = [r for r in results if r.get("kind", "positive") == "positive"]
     rng = random.Random(seed)
     out = {}
     for model in sorted({r["model"] for r in results}):
