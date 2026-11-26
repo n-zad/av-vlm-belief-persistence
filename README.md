@@ -78,7 +78,7 @@ pip install -r requirements.txt
 
 The evaluation needs only 804 front-camera images, not the full dataset.
 
-1. Download the **Trainval metadata** (0.43 GB) and the **camera keyframe** archives of the 10
+1. Download the **Trainval metadata** (0.43 GB) and the **keyframe blobs** for the 10
    Trainval parts from the [nuScenes download page](https://www.nuscenes.org/nuscenes#download)
    (free account required).
 2. Extract the metadata into `data/nuscenes/` so that `data/nuscenes/v1.0-trainval/` exists.
@@ -86,6 +86,13 @@ The evaluation needs only 804 front-camera images, not the full dataset.
 
    ```bash
    tar -xzf v1.0-trainval01_keyframes.tgz -C data/nuscenes -T needed_images.txt
+   ```
+   
+   ```bash
+   for i in {01..10}; do
+       tar -xzf v1.0-trainval${i}_keyframes.tgz \
+           -C data/nuscenes -T needed_images.txt
+   done
    ```
 
 `data/` is git-ignored; nuScenes may not be redistributed.
