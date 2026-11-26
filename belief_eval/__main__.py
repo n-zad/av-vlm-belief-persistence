@@ -1,5 +1,6 @@
 import argparse
 import json
+from collections import Counter
 
 from . import metrics, mine, models, run
 
@@ -68,7 +69,8 @@ def main():
         with open(a.images_out, "w", encoding="utf-8", newline="\n") as f:
             f.writelines(i + "\n" for i in images)
         in_pos = len({x["scene"] for x in seqs} & {p["scene"] for p in positives})
-        print(f"{len(seqs)} control sequences ({in_pos} from scenes with positives) -> {a.out}; "
+        conds = dict(sorted(Counter(x["condition"] for x in seqs).items()))
+        print(f"{len(seqs)} control sequences ({in_pos} from scenes with positives; {conds}) -> {a.out}; "
               f"{len(images)} images -> {a.images_out}")
     elif a.cmd == "run":
         with open(a.sequences, encoding="utf-8") as f:

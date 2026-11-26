@@ -10,7 +10,7 @@ from belief_eval.models import ScriptedModel
 CAM_ROT = [0.5, -0.5, 0.5, -0.5]  # nuScenes CAM_FRONT: camera z (forward) = ego x
 
 
-def write_tables(root, objects, n=6):
+def write_tables(root, objects, n=6, description=""):
     """objects: (instance, category, global_xyz, [visibility per frame])."""
     t = {k: [] for k in ["scene", "sample", "sample_data", "sample_annotation", "instance",
                          "category", "calibrated_sensor", "ego_pose", "sensor"]}
@@ -18,7 +18,7 @@ def write_tables(root, objects, n=6):
     t["calibrated_sensor"].append({"token": "cs", "sensor_token": "sen", "translation": [1.7, 0, 1.5],
                                    "rotation": CAM_ROT,
                                    "camera_intrinsic": [[1266, 0, 816], [0, 1266, 491], [0, 0, 1]]})
-    t["scene"].append({"token": "sc", "name": "scene-0001", "first_sample_token": "s0"})
+    t["scene"].append({"token": "sc", "name": "scene-0001", "first_sample_token": "s0", "description": description})
     for i in range(n):
         t["sample"].append({"token": f"s{i}", "scene_token": "sc", "next": f"s{i+1}" if i < n - 1 else ""})
         t["ego_pose"].append({"token": f"e{i}", "rotation": [1, 0, 0, 0], "translation": [0, 0, 0]})
@@ -186,10 +186,10 @@ class TestPipeline(unittest.TestCase):
                 run.run(Other(), "m", [seq], ["reconsider"], "/data", out)
             run.run(Other(), "other-model", [seq], ["stateless"], "/data", out)  # other models are fine
 
-    def controls_with(self, objects, n_frames=8, positives=None):
+    def controls_with(self, objects, n_frames=8, positives=None, description=""):
         positives = positives or [{"scene": "scene-0001", "evidence_index": 3}]
         with tempfile.TemporaryDirectory() as root:
-            write_tables(root, objects, n=n_frames)
+            write_tables(root, objects, n=n_frames, description=description)
             return mine.mine_controls(root, positives, version="v1.0-mini")
 
     def test_controls_need_six_frames_without_any_pedestrian(self):
@@ -214,6 +214,17 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(self.controls_with([bike]), [])
         behind = ("pedB", "human.pedestrian.adult", [-10, 0, 1], [4] * 8)
         self.assertEqual(len(self.controls_with([behind])), 1)
+
+    def test_controls_are_matched_on_conditions(self):
+        self.assertEqual([mine.scene_condition({"description": d}) for d in
+                          ("Night, rain, peds", "Rain, wet road", "Parking lot, peds", "")],
+                         ["night", "rain", "clear", "clear"])
+        self.assertEqual(mine.matched_counts(["a", "a", "b"], 4), {"a": 3, "b": 1})
+        # the positives' mix: 9 night, 11 rain, 125 clear sequences -> 75 controls
+        counts = mine.matched_counts(["night"] * 9 + ["rain"] * 11 + ["clear"] * 125, 75)
+        self.assertEqual(counts, {"night": 4, "rain": 6, "clear": 65})
+        early = ("pedA", "human.pedestrian.adult", [12, 1, 1], [1, 1])
+        self.assertEqual(self.controls_with([early], description="Night, rain")[0]["condition"], "night")
 
     def test_control_records_are_kept_out_of_positive_metrics(self):
         seq = self.mine_with([PED_AHEAD])[0]

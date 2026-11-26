@@ -11,6 +11,7 @@ visible (level >= 3) before it, so the evidence frame is the first unambiguous v
 import json
 import os
 import random
+from collections import Counter
 
 import numpy as np
 
@@ -205,6 +206,22 @@ def mine(dataroot, version="v1.0-mini", category_prefix="human.pedestrian",
 CONTROL_EXCLUDE = ("human.pedestrian", "vehicle.bicycle", "vehicle.motorcycle")
 
 
+def scene_condition(scene):
+    """"night", "rain" or "clear", from the free-text scene description (night takes priority)."""
+    d = scene.get("description", "").lower()
+    return "night" if "night" in d else "rain" if "rain" in d else "clear"
+
+
+def matched_counts(conditions, n):
+    """Split n across conditions in proportion to how often each occurs (largest remainder)."""
+    freq = Counter(conditions)
+    exact = {c: n * f / len(conditions) for c, f in freq.items()}
+    counts = {c: int(x) for c, x in exact.items()}
+    for c in sorted(exact, key=lambda c: (counts[c] - exact[c], c))[:n - sum(counts.values())]:
+        counts[c] += 1
+    return counts
+
+
 def mine_controls(dataroot, positives, version="v1.0-trainval", n=75, length=6, seed=0,
                   object_name="pedestrian", only_downloaded=False):
     """Pedestrian-free control sequences: `length` consecutive CAM_FRONT keyframes in which no
@@ -212,8 +229,13 @@ def mine_controls(dataroot, positives, version="v1.0-trainval", n=75, length=6, 
 
     Ground truth is "no" on every frame. Each control takes its evidence_index from a positive
     sequence of the same scene (else a random positive), so planted modes get the same mix of
-    planted turns; for a control it only marks where the planted answers stop. Scenes that hold
-    positives are used first, one window per scene, then other scenes until n are found.
+    planted turns; for a control it only marks where the planted answers stop.
+
+    Controls are matched to the positives on conditions: the n controls have the same share of
+    night, rain and clear scenes as the positive sequences (pedestrian-free windows are easier to
+    find at night and in rain, so unmatched controls skew that way). Within each condition, scenes
+    that hold positives are used first, one window per scene, then other scenes. If a condition
+    runs short, the rest is filled from any condition.
     Absent annotations do not prove an empty frame (far pedestrians can be unlabelled), so
     spot-check the result by eye.
     """
@@ -247,14 +269,24 @@ def mine_controls(dataroot, positives, version="v1.0-trainval", n=75, length=6, 
     rng.shuffle(preferred)
     rng.shuffle(others)
 
+    scenes = {r["name"]: r for r in t["scene"].values()}
+    condition = {name: scene_condition(r) for name, r in scenes.items()}
+    targets = matched_counts([condition[p["scene"]] for p in positives], n)
+    picked = []
+    for cond in sorted(targets):
+        picked += [s for s in preferred + others if condition[s] == cond][:targets[cond]]
+    taken = set(picked)
+    picked += [s for s in preferred + others if s not in taken][:n - len(picked)]
+
     controls = []
-    for name in sorted((preferred + others)[:n]):
+    for name in sorted(picked):
         samples, ok = windows[name]
         start = rng.choice(ok)
         controls.append({
             "id": f"{name}_control_{start}",
             "scene": name,
             "kind": "control",
+            "condition": condition[name],
             "object": object_name,
             "evidence_index": rng.choice(k_by_scene.get(name, all_k)),
             "frames": [{"sample_token": s, "image": cams[s][0]["filename"],
