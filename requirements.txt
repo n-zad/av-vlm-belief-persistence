@@ -1,5 +1,6 @@
 numpy
 pillow
+tqdm  # progress bar for `run`
 matplotlib  # only for `figures`
 # for real models (not needed for `--model mock` or the tests); exact versions are pinned so
 # reruns tokenize the history the same way. torch is left at the platform's CUDA build.

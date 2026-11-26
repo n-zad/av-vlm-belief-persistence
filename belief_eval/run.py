@@ -15,6 +15,8 @@ import os
 import re
 import time
 
+from tqdm import tqdm
+
 MODES = ("stateless", "stateful", "reconsider", "planted_no", "planted_yes")
 
 PROMPT = (
@@ -106,11 +108,13 @@ def run(model, model_name, sequences, modes, dataroot, out_path):
                         f"  file: {r.get('config')}\n  now:  {config}\n"
                         "Use the same settings and package versions, or write to a new file.")
                 done.add((r["id"], r["mode"]))
+    todo = [(seq, mode) for seq in sequences for mode in modes if (seq["id"], mode) not in done]
+    total = len(sequences) * len(modes)
+    # counts pairs finished in earlier sessions too, so a resumed run shows overall progress
+    bar = tqdm(todo, total=total, initial=total - len(todo), unit="seq")
     with open(out_path, "a", encoding="utf-8", newline="\n") as out:
-        for seq in sequences:
-            for mode in modes:
-                if (seq["id"], mode) in done:
-                    continue
-                rec = {"model": model_name, "config": config, **run_sequence(model, seq, mode, dataroot)}
-                out.write(json.dumps(rec) + "\n")
-                out.flush()
+        for seq, mode in bar:
+            bar.set_postfix_str(f"{mode} {seq['id']}")
+            rec = {"model": model_name, "config": config, **run_sequence(model, seq, mode, dataroot)}
+            out.write(json.dumps(rec) + "\n")
+            out.flush()
