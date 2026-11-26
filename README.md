@@ -6,21 +6,16 @@ Course project for CMPE 249: IA Systems (Track 6, Safety and Evaluation), San Jo
 
 - **Paper (PDF):** [report/main.pdf](report/main.pdf) (LaTeX source in [report/](report/))
 - **Video demo:** _link to be added_
-- **Models:** [Qwen/Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct),
-  [llava-hf/llava-onevision-qwen2-7b-ov-hf](https://huggingface.co/llava-hf/llava-onevision-qwen2-7b-ov-hf)
-  (used as released; no training or fine-tuning)
+- **Models:** [Qwen/Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct), [llava-hf/llava-onevision-qwen2-7b-ov-hf](https://huggingface.co/llava-hf/llava-onevision-qwen2-7b-ov-hf) (used as released; no training or fine-tuning)
 - **Dataset:** [nuScenes v1.0](https://www.nuscenes.org/nuscenes#download) (trainval metadata + camera keyframes)
 
 ## Abstract
 
-Vision-language models (VLMs) are increasingly used as perception components in autonomous vehicles,
-where they are queried over a stream of camera frames. We test whether a VLM that wrongly reports
-"no pedestrian" keeps that belief after the pedestrian becomes clearly visible. On 145 nuScenes
-front-camera sequences in which a pedestrian goes from 0–40% to 80–100% visible, we query
-Qwen2.5-VL-7B and LLaVA-OneVision-7B on every frame without history (stateless), with the conversation
-history including their own earlier answers (stateful), and with history plus an instruction to
-reconsider. History lowers post-evidence accuracy by 29 and 18 points, and the cause is verbatim
-answer copying. The reconsider instruction does not help; only resetting the history does.
+Vision-language models (VLMs) are increasingly used as perception components in autonomous vehicles, where they are queried over a stream of camera frames.
+We test whether a VLM that wrongly reports "no pedestrian" keeps that belief after the pedestrian becomes clearly visible.
+On 145 nuScenes front-camera sequences in which a pedestrian goes from 0–40% to 80–100% visible, we query Qwen2.5-VL-7B and LLaVA-OneVision-7B on every frame without history (stateless), with the conversation history including their own earlier answers (stateful), and with history plus an instruction to reconsider.
+History lowers post-evidence accuracy by 29 and 18 points, and the cause is verbatim answer copying.
+The reconsider instruction does not help; only resetting the history does.
 
 ## Results
 
@@ -34,10 +29,8 @@ answer copying. The reconsider instruction does not help; only resetting the his
 
 ![Seen without history: still seen with history?](figures/visible_without_history.png)
 
-**Limitations:** no pedestrian-free control sequences (false positives are not measured); rule-based
-driving-action labels (92% "proceed"); different image sizes per model to fit a 16 GB T4; nuScenes
-visibility spans all six cameras and was not reviewed manually; 107 LLaVA replies were a bare "No"
-with no action. Details in section 5 of the paper.
+**Limitations:** no pedestrian-free control sequences (false positives are not measured); rule-based driving-action labels (92% "proceed"); different image sizes per model to fit a 16 GB T4; nuScenes visibility spans all six cameras and was not reviewed manually; 107 LLaVA replies were a bare "No" with no action.
+Details in section 5 of the paper.
 
 ## Project structure
 
@@ -76,22 +69,17 @@ pip install -r requirements.txt
 
 ## Data
 
-The evaluation needs only 804 front-camera images, not the full dataset.
+The evaluation needs only 1,254 front-camera images (804 for the positive sequences, 450 for the control sequences), not the full dataset.
 
-1. Download the **Trainval metadata** (0.43 GB) and the **keyframe blobs** for the 10
-   Trainval parts from the [nuScenes download page](https://www.nuscenes.org/nuscenes#download)
-   (free account required).
+1. Download the **Trainval metadata** (0.43 GB) and the **keyframe blobs** for the 10 Trainval parts from the [nuScenes download page](https://www.nuscenes.org/nuscenes#download) (free account required).
 2. Extract the metadata into `data/nuscenes/` so that `data/nuscenes/v1.0-trainval/` exists.
-3. Extract only the needed images from each part, then delete the archive if you like:
+3. Extract only the needed images from each part, then delete the archives if you like.
+   Each archive holds only some of the images, so tar reports the rest as not found; that is expected.
 
-   ```bash
-   tar -xzf v1.0-trainval01_keyframes.tgz -C data/nuscenes -T needed_images.txt
-   ```
-   
    ```bash
    for i in {01..10}; do
-       tar -xzf v1.0-trainval${i}_keyframes.tgz \
-           -C data/nuscenes -T needed_images.txt
+       tar -xzf v1.0-trainval${i}_keyframes.tgz -C data/nuscenes \
+           -T needed_images.txt -T needed_images_control.txt
    done
    ```
 
@@ -122,14 +110,10 @@ python -m belief_eval score results/results_qwen7b.jsonl results/results_llava7b
 python -m belief_eval figures results/results_qwen7b.jsonl results/results_llava7b.jsonl --dataroot data/nuscenes
 ```
 
-`run` appends to its output file and skips finished (sequence, mode) pairs, so an interrupted run
-resumes with the same command. Each answer records latency, prompt length and peak GPU memory,
-and each line records the run config (image size, 4-bit flag, prompt hash, package versions);
-`run` refuses to resume a file written with a different config.
+`run` appends to its output file and skips finished (sequence, mode) pairs, so an interrupted run resumes with the same command.
+Each answer records latency, prompt length and peak GPU memory, and each line records the run config (image size, 4-bit flag, prompt hash, package versions); `run` refuses to resume a file written with a different config.
 
-**On Colab:** upload the 804 images as `cam_front_images.zip` to `MyDrive/cmpe249/`, open
-[notebooks/colab_eval.ipynb](https://colab.research.google.com/github/n-zad/av-vlm-belief-persistence/blob/main/notebooks/colab_eval.ipynb),
-choose a T4 runtime and the model in step 1, and run the cells in order.
+**On Colab:** zip the extracted images (`cd data/nuscenes && zip -qr ../nuscenes_samples.zip samples`), upload `nuscenes_samples.zip` to `MyDrive/cmpe249/`, open [notebooks/colab_eval.ipynb](https://colab.research.google.com/github/n-zad/av-vlm-belief-persistence/blob/main/notebooks/colab_eval.ipynb), choose a T4 runtime and the model in step 1, and run the cells in order.
 
 ## Building the paper
 
@@ -138,8 +122,8 @@ cd report
 pdflatex main && bibtex main && pdflatex main && pdflatex main
 ```
 
-The paper reads its figures from `../figures/` (or `figures/` next to `main.tex`); regenerate them with step 4 above. On Overleaf,
-upload `main.tex`, `references.bib` and a `figures/` folder with the PDFs, then compile with pdfLaTeX.
+The paper reads its figures from `../figures/` (or `figures/` next to `main.tex`); regenerate them with step 4 above.
+On Overleaf, upload `main.tex`, `references.bib` and a `figures/` folder with the PDFs, then compile with pdfLaTeX.
 
 ## Tests
 
@@ -149,5 +133,4 @@ python -m unittest discover tests
 
 ## License and attribution
 
-Image crops in `figures/examples_*` are from the nuScenes dataset (Motional), used under
-CC BY-NC-SA 4.0 for non-commercial research: <https://www.nuscenes.org/terms-of-use>.
+Image crops in `figures/examples_*` are from the nuScenes dataset (Motional), used under CC BY-NC-SA 4.0 for non-commercial research: <https://www.nuscenes.org/terms-of-use>.
