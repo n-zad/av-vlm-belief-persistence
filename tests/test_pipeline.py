@@ -100,12 +100,12 @@ class TestPipeline(unittest.TestCase):
             {"model": "m", **run.run_sequence(ScriptedModel([answer("yes", "stop")] * 6), seq, "stateless", "/data")},
         ]
         s = metrics.summarize(results, n_boot=200)["m"]
-        self.assertEqual(s["stateful"]["n_hallucinated"], 1)
+        self.assertEqual(s["stateful"]["n_wrong_before"], 1)
         self.assertEqual(s["stateful"]["persistence_rate"], 1.0)
         self.assertEqual(s["stateful"]["latency_median"], 2)
         self.assertEqual(s["stateful"]["post_evidence_accuracy"], 0.5)
         self.assertAlmostEqual(s["stateful"]["unsafe_action_rate"], 4 / 6)
-        self.assertEqual(s["stateless"]["n_hallucinated"], 0)
+        self.assertEqual(s["stateless"]["n_wrong_before"], 0)
         self.assertEqual(s["stateless"]["safety_balanced_accuracy"], 1.0)
         self.assertEqual(s["stateful_minus_stateless_post_acc"]["mean"], -0.5)
         self.assertIn("latency_s_median", s["stateful"])  # timing recorded for every call
@@ -124,9 +124,14 @@ class TestPipeline(unittest.TestCase):
                 Image.new("RGB", (1600, 900)).save(os.path.join(root, f["image"]))
             stuck = [answer("no", "proceed")] * 4 + [answer("yes", "stop")] * 2
             results = [{"model": "m", **run.run_sequence(ScriptedModel(a), seq, mode, root)}
-                       for mode, a in [("stateless", [answer("yes", "stop")] * 6), ("stateful", stuck)]]
+                       for mode, a in [("stateless", [answer("yes", "stop")] * 6), ("stateful", stuck),
+                                       ("planted_no", stuck[2:])]]
+            ctrl = {**seq, "id": "scene-0002_control_0", "kind": "control",
+                    "frames": [{**f, "gt_present": False} for f in seq["frames"]]}
+            results.append({"model": "m", **run.run_sequence(ScriptedModel(), ctrl, "planted_yes", root)})
             out = os.path.join(root, "figs")
-            names = ["copying", "examples_m", "seen_by_size", "visible_without_history", "yes_by_frame"]
+            names = ["copying", "examples_m", "planted_belief", "seen_by_size", "visible_without_history",
+                     "yes_by_frame"]
             self.assertEqual(figures.make_all(results, {seq["id"]: seq}, out, root),
                              sorted(n + ext for n in names for ext in (".pdf", ".png")))
 
@@ -217,6 +222,43 @@ class TestPipeline(unittest.TestCase):
         results = [{"model": "m", **run.run_sequence(ScriptedModel(), s, "stateless", "/data")} for s in (seq, ctrl)]
         self.assertEqual(results[1]["kind"], "control")
         self.assertEqual(metrics.summarize(results, n_boot=50)["m"]["stateless"]["n_sequences"], 1)
+
+    def test_planted_and_paired_metrics(self):
+        seq = self.mine_with([PED_AHEAD])[0]  # k = 2
+        run_ = lambda answers, mode: {"model": "m", **run.run_sequence(ScriptedModel(answers), seq, mode, "/data")}
+        results = [run_([answer("yes", "stop")] * 6, "stateless"),
+                   run_([answer("no", "proceed"), answer("yes", "stop"), answer("yes", "stop")], "planted_no")]
+        s = metrics.summarize(results, n_boot=50)["m"]
+        p = s["planted_no"]
+        self.assertEqual(p["frame_accuracy"], 3 / 4)  # no, yes, yes, then the mock "yes"; planted frames not counted
+        self.assertEqual(p["safety_balanced_accuracy"], 0.5)  # 2 of 4 answered frames say "stop" (gt)
+        self.assertEqual((p["n_wrong_before"], p["persistence_rate"], p["latency_median"]), (1, 0.0, 1))
+        self.assertEqual(p["switches"], {"yes_to_no": 0, "no_to_yes": 1})  # planted "no" -> no -> yes
+        self.assertEqual(p["accuracy_by_offset"][0], {"accuracy": 0, "n": 1})
+        self.assertEqual(s["visible_without_history"]["planted_no"]["evidence_frame_accuracy"], 0.0)
+        self.assertEqual(s["mcnemar_evidence_frame"]["planted_no"],
+                         {"n_pairs": 1, "stateless_only": 1, "mode_only": 0, "p_exact": 1.0})
+
+    def test_control_metrics(self):
+        seq = self.mine_with([PED_AHEAD])[0]
+        ctrl = {**seq, "id": "scene-0002_control_0", "kind": "control",
+                "frames": [{**f, "gt_present": False} for f in seq["frames"]]}
+        results = [{"model": "m", **run.run_sequence(ScriptedModel(a), ctrl, mode, "/data")} for mode, a in
+                   [("stateless", [answer("no", "proceed")] * 6), ("planted_yes", [answer("yes", "slow")] * 4)]]
+        c = metrics.summarize(results, n_boot=50)["m"]["controls"]
+        self.assertEqual(c["stateless"]["says_present_rate"], 0.0)  # no false positives without history
+        self.assertEqual(c["planted_yes"]["persistence_rate"], 1.0)  # the planted "yes" never goes away
+        self.assertEqual(c["empty_without_history"]["planted_yes"]["evidence_frame_accuracy"], 0.0)
+
+    def test_mcnemar_and_scene_bootstrap(self):
+        self.assertAlmostEqual(metrics.mcnemar_exact(39, 0), 2 / 2 ** 39)
+        self.assertEqual(metrics.mcnemar_exact(0, 0), 1.0)
+        self.assertAlmostEqual(metrics.mcnemar_exact(3, 3), 1.0)
+        rng = metrics.random.Random(0)
+        # two scenes, one all 0s and one all 1s: resampling scenes gives only means 0, 1/3, 2/3, 1
+        ci = metrics.bootstrap_ci([0, 1, 1], 200, rng, ["a", "b", "b"])
+        self.assertEqual(ci, [0.0, 1.0])
+        self.assertEqual(metrics.scene_of("scene-0003_24082a54_0"), "scene-0003")
 
 
 if __name__ == "__main__":

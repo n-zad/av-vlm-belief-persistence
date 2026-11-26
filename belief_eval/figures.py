@@ -4,9 +4,14 @@ from statistics import mean
 
 from . import metrics
 
-MODES = ("stateless", "stateful", "reconsider")
-COLOR = {"stateless": "#2a78d6", "stateful": "#eb6834", "reconsider": "#1baf7a"}  # categorical slots 1-3
-LABEL = {"stateless": "No history", "stateful": "With history", "reconsider": "With history + reconsider"}
+MODES = ("stateless", "stateful", "reconsider")  # modes where the model writes every answer itself
+PLANTED = ("planted_no", "planted_yes")
+COLOR = {"stateless": "#2a78d6", "stateful": "#eb6834", "reconsider": "#1baf7a",  # categorical slots 1-5
+         "planted_no": "#f2a600", "planted_yes": "#ee7fac"}
+LABEL = {"stateless": "No history", "stateful": "With history", "reconsider": "With history + reconsider",
+         "planted_no": "Planted “no” history", "planted_yes": "Planted “yes” history"}
+# secondary encoding, so no mode is told apart by colour alone
+MARKER = {"stateless": "o", "stateful": "s", "reconsider": "^", "planted_no": "D", "planted_yes": "v"}
 INK, INK2, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
 SIZE_BINS = ((0, 60, "< 60"), (60, 90, "60–89"), (90, 150, "90–149"), (150, float("inf"), "150+"))
 
@@ -47,10 +52,26 @@ def bar_labels(ax, bars, texts, tops=None):
                     textcoords="offset points", ha="center", va="bottom", color=INK2, fontsize=9)
 
 
+def end_labels(ax, ends, gap_pt=12):
+    """Value labels at the right end of each line, nudged apart so they never overlap.
+    ends: [(x, y)] in data units; gap_pt: minimum vertical spacing in points."""
+    fig = ax.get_figure()
+    lo, hi = ax.get_ylim()
+    height_pt = ax.get_position().height * fig.get_figheight() * 72
+    gap = gap_pt * (hi - lo) / height_pt
+    placed = []
+    for x, y in sorted(ends, key=lambda e: e[1]):
+        placed.append((x, y, max(y, placed[-1][2] + gap) if placed else y))
+    for x, y, ly in placed:
+        ax.annotate(f"{y:.0f}%", (x, ly), xytext=(7, 0), textcoords="offset points",
+                    va="center", color=INK2, fontsize=9, annotation_clip=False)
+
+
 def yes_by_frame(plt, by_model, out):
     fig, axes = panels(plt, len(by_model), "Share of answers saying a pedestrian is present")
+    pending = []
     for ax, (model, recs) in zip(axes, by_model.items()):
-        shown = set()
+        shown, ends = set(), []
         for m in MODES:
             by = {}
             for r in recs:
@@ -64,18 +85,21 @@ def yes_by_frame(plt, by_model, out):
                 continue
             shown.update(xs)
             ys = [100 * mean(by[d]) for d in xs]
-            ax.plot(xs, ys, color=COLOR[m], lw=2, marker="o", ms=6, label=LABEL[m])
-            ax.annotate(f"{ys[-1]:.0f}%", (xs[-1], ys[-1]), xytext=(7, 0), textcoords="offset points",
-                        va="center", color=INK2, fontsize=9)
+            ax.plot(xs, ys, color=COLOR[m], lw=2, marker=MARKER[m], ms=6, label=LABEL[m])
+            ends.append((xs[-1], ys[-1]))
+        pending.append((ax, ends))
         ax.axvline(0, color=INK2, lw=1, ls="--")
         ax.annotate("first clear frame", (0, 97), xytext=(4, 0), textcoords="offset points",
                     color=INK2, fontsize=9, va="top")
         ax.set(title=short(model), xlabel="Frames relative to the first clear frame", ylim=(0, 100))
         ticks = range(min(shown), max(shown) + 1) if shown else [0]
         ax.set_xticks(ticks, [f"{d:+d}" if d else "0" for d in ticks])
+        ax.set_xlim(min(ticks) - 0.3, max(ticks) + 0.6)  # room for the end labels
     axes[0].set_ylabel("Says “present” (%)")
     axes[0].legend(loc="upper left", frameon=False, fontsize=9)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
+    for ax, ends in pending:  # after the layout, so the spacing uses the final axes size
+        end_labels(ax, ends)
     save(fig, out, "yes_by_frame")
 
 
@@ -83,9 +107,12 @@ def visible_without_history(plt, summary, out):
     fig, axes = panels(plt, len(summary), "Seen without history: still seen with history?")
     for ax, (model, s) in zip(axes, summary.items()):
         v = s.get("visible_without_history", {})
-        modes = [m for m in MODES if m == "stateless" or m in v]
+        modes = [m for m in MODES + PLANTED if m == "stateless" or m in v]
         vals = [100.0 if m == "stateless" else 100 * v[m]["evidence_frame_accuracy"] for m in modes]
         bars = ax.bar(range(len(modes)), vals, width=0.6, color=[COLOR[m] for m in modes])
+        for b, m in zip(bars, modes):
+            if m in PLANTED:
+                b.set_hatch("//"), b.set_edgecolor(SURFACE)
         tops = list(vals)
         for i, m in enumerate(modes):
             if m != "stateless" and v[m]["ci"]:
@@ -93,13 +120,59 @@ def visible_without_history(plt, summary, out):
                 ax.errorbar(i, vals[i], yerr=[[vals[i] - lo], [hi - vals[i]]], color=INK, lw=1.2, capsize=4)
                 tops[i] = hi  # label above the whisker, not on it
         bar_labels(ax, bars, [f"{x:.0f}%" for x in vals], tops)
-        ax.set_xticks(range(len(modes)), [LABEL[m] for m in modes], fontsize=9)
+        ax.set_xticks(range(len(modes)), [LABEL[m].replace(" history", "\nhistory").replace(" + ", "\n+ ")
+                                          for m in modes], fontsize=8)
         ax.set(title=f"{short(model)} (n = {v.get('n', 0)} sequences)", ylim=(0, 110))
     axes[0].set_ylabel("Says “present” on the clear frame (%)")
-    fig.text(0.01, 0.01, "Error bars: 95% bootstrap CI. “No history” is 100% by construction (it defines the subset).",
+    fig.text(0.01, 0.01, "Error bars: 95% bootstrap CI, resampling scenes. “No history” is 100% by construction (it defines the subset).",
              color=INK2, fontsize=8)
     fig.tight_layout(rect=(0, 0.04, 1, 0.94))
     save(fig, out, "visible_without_history")
+
+
+def planted_belief(plt, by_model, out):
+    """Accuracy on each frame from the evidence frame on: does a wrong belief in the history get
+    overturned, and how fast? Top row: pedestrian present. Bottom row (if run): control sequences
+    without a pedestrian, where a planted "yes" is the wrong belief."""
+    rows = [("positive", ("stateless", "stateful", "planted_no", "planted_yes"),
+             "Pedestrian present: says “present” (%)"),
+            ("control", ("stateless", "planted_yes"), "No pedestrian: says “no” (%)")]
+    rows = [r for r in rows if any(x.get("kind", "positive") == r[0] for recs in by_model.values() for x in recs)]
+    fig, axes = plt.subplots(len(rows), len(by_model), figsize=(5.6 * len(by_model), 3.4 * len(rows)),
+                             sharey=True, squeeze=False)
+    fig.suptitle("After the evidence frame: is a wrong belief in the history overturned?",
+                 x=0.01, ha="left", fontsize=12, color=INK)
+    pending = []
+    for row, (kind, modes, ylabel) in zip(axes, rows):
+        for ax, (model, recs) in zip(row, by_model.items()):
+            shown, ends = {0}, []
+            for m in modes:
+                sel = [r for r in recs if r["mode"] == m and r.get("kind", "positive") == kind]
+                acc = metrics.by_offset(sel)
+                # offsets that only a few sequences reach are noise
+                xs = [d for d in acc if acc[d]["n"] >= min(20, len(sel))]
+                if not xs:
+                    continue
+                shown.update(xs)
+                ys = [100 * acc[d]["accuracy"] for d in xs]
+                ax.plot(xs, ys, color=COLOR[m], lw=2, marker=MARKER[m], ms=6, label=LABEL[m],
+                        ls="--" if m in PLANTED else "-")
+                ends.append((xs[-1], ys[-1]))
+            pending.append((ax, ends))
+            ax.set(title=f"{short(model)}, {'positive' if kind == 'positive' else 'control'} sequences",
+                   ylim=(0, 105))
+            ticks = range(max(shown) + 1)
+            ax.set_xticks(ticks, [f"k{d:+d}" if d else "k" for d in ticks])
+            ax.set_xlim(-0.3, max(ticks) + 0.6)  # room for the end labels
+            ax.set_xlabel("Frame (k = evidence frame, first frame after the planted turns)")
+        row[0].set_ylabel(ylabel)
+    # one legend for both rows: the control row reuses the positive row's mode styles
+    fig.legend(*axes[0][0].get_legend_handles_labels(), loc="upper left", bbox_to_anchor=(0.01, 0.955 if len(rows) > 1 else 0.9),
+               ncol=4, frameon=False, fontsize=9)
+    fig.tight_layout(rect=(0, 0, 1, 0.92 if len(rows) > 1 else 0.86))
+    for ax, ends in pending:  # after the layout, so the spacing uses the final axes size
+        end_labels(ax, ends)
+    save(fig, out, "planted_belief")
 
 
 def by_size(plt, by_model, seqs, out):
@@ -126,7 +199,7 @@ def by_size(plt, by_model, seqs, out):
 def copying(plt, by_model, out):
     fig, axes = panels(plt, len(by_model), "Answers that repeat the previous answer word for word")
     for ax, (model, recs) in zip(axes, by_model.items()):
-        modes = [m for m in MODES if any(r["mode"] == m for r in recs)]
+        modes = [m for m in MODES if any(r["mode"] == m for r in recs)]  # planted answers are ours, not copies
         vals = [100 * mean(r["frames"][t]["raw"] == r["frames"][t - 1]["raw"]
                            for r in recs if r["mode"] == m for t in range(1, len(r["frames"]))) for m in modes]
         bars = ax.bar(range(len(modes)), vals, width=0.6, color=[COLOR[m] for m in modes])
@@ -176,15 +249,18 @@ def examples(plt, model, recs, seqs, dataroot, out, n=2, crop=(560, 315)):
 
 
 def make_all(results, seqs, out, dataroot=None):
-    # figures describe positive sequences; control sequences have no pedestrian to draw
-    results = [r for r in results if r.get("kind", "positive") == "positive"]
     plt = setup()
     os.makedirs(out, exist_ok=True)
-    by_model = {}
+    by_model, with_controls = {}, {}
     for r in results:
-        by_model.setdefault(r["model"], []).append(r)
+        with_controls.setdefault(r["model"], []).append(r)
+        # the other figures describe positive sequences; controls have no pedestrian to draw
+        if r.get("kind", "positive") == "positive":
+            by_model.setdefault(r["model"], []).append(r)
     yes_by_frame(plt, by_model, out)
     visible_without_history(plt, metrics.summarize(results), out)
+    if any(r["mode"] in PLANTED for r in results):
+        planted_belief(plt, with_controls, out)
     by_size(plt, by_model, seqs, out)
     copying(plt, by_model, out)
     if dataroot:
