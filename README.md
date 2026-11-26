@@ -113,7 +113,12 @@ python -m belief_eval figures results/results_qwen7b.jsonl results/results_llava
 `run` appends to its output file and skips finished (sequence, mode) pairs, so an interrupted run resumes with the same command.
 Each answer records latency, prompt length and peak GPU memory, and each line records the run config (image size, 4-bit flag, prompt hash, package versions); `run` refuses to resume a file written with a different config.
 
-**On Colab:** zip the extracted images (`cd data/nuscenes && zip -qr ../nuscenes_samples.zip samples`), upload `nuscenes_samples.zip` to `MyDrive/cmpe249/`, open [notebooks/colab_eval.ipynb](https://colab.research.google.com/github/n-zad/av-vlm-belief-persistence/blob/main/notebooks/colab_eval.ipynb), choose a T4 runtime and the model in step 1, and run the cells in order.
+**On Colab:**
+1. zip the extracted images (`python -m zipfile -c data/nuscenes_samples.zip data/nuscenes/samples`)
+2. upload `nuscenes_samples.zip` to `MyDrive/cmpe249/`
+3. open [notebooks/colab_eval.ipynb](https://colab.research.google.com/github/n-zad/av-vlm-belief-persistence/blob/main/notebooks/colab_eval.ipynb)
+4. choose a T4 runtime and the model in step 1
+5. run the cells in order
 
 ## Building the paper
 
