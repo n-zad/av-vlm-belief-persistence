@@ -106,7 +106,7 @@ def run(model, model_name, sequences, modes, dataroot, out_path):
                         f"  file: {r.get('config')}\n  now:  {config}\n"
                         "Use the same settings and package versions, or write to a new file.")
                 done.add((r["id"], r["mode"]))
-    with open(out_path, "a", encoding="utf-8") as out:
+    with open(out_path, "a", encoding="utf-8", newline="\n") as out:
         for seq in sequences:
             for mode in modes:
                 if (seq["id"], mode) in done:

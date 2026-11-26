@@ -26,8 +26,8 @@ def main():
     c.add_argument("--n", type=int, default=75)
     c.add_argument("--seed", type=int, default=0)
     c.add_argument("--only-downloaded", action="store_true", help="skip frames whose image is missing")
-    c.add_argument("--out", default="sequences_controls.jsonl")
-    c.add_argument("--images-out", default="needed_images_controls.txt",
+    c.add_argument("--out", default="sequences_control.jsonl")
+    c.add_argument("--images-out", default="needed_images_control.txt",
                    help="list of the images the controls use, for tar -T")
 
     r = sub.add_parser("run", help="run a VLM over mined sequences")
@@ -54,7 +54,7 @@ def main():
     if a.cmd == "mine":
         seqs = mine.mine(a.dataroot, a.version, a.category, a.object_name, a.length,
                          a.min_px, a.only_downloaded)
-        with open(a.out, "w", encoding="utf-8") as f:
+        with open(a.out, "w", encoding="utf-8", newline="\n") as f:
             f.writelines(json.dumps(x) + "\n" for x in seqs)
         print(f"{len(seqs)} sequences -> {a.out}")
     elif a.cmd == "mine-controls":
@@ -62,10 +62,10 @@ def main():
             positives = [json.loads(line) for line in f]
         seqs = mine.mine_controls(a.dataroot, positives, a.version, a.n, seed=a.seed,
                                   only_downloaded=a.only_downloaded)
-        with open(a.out, "w", encoding="utf-8") as f:
+        with open(a.out, "w", encoding="utf-8", newline="\n") as f:
             f.writelines(json.dumps(x) + "\n" for x in seqs)
         images = sorted({fr["image"] for x in seqs for fr in x["frames"]})
-        with open(a.images_out, "w", encoding="utf-8") as f:
+        with open(a.images_out, "w", encoding="utf-8", newline="\n") as f:
             f.writelines(i + "\n" for i in images)
         in_pos = len({x["scene"] for x in seqs} & {p["scene"] for p in positives})
         print(f"{len(seqs)} control sequences ({in_pos} from scenes with positives) -> {a.out}; "

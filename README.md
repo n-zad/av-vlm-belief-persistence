@@ -97,9 +97,9 @@ The evaluation needs only 804 front-camera images, not the full dataset.
 python -m belief_eval mine --dataroot data/nuscenes --version v1.0-trainval --out sequences_trainval.jsonl
 
 # 1b. Mine pedestrian-free control sequences (CPU, metadata only); writes the image list they need
-python -m belief_eval mine-controls --dataroot data/nuscenes --out sequences_controls.jsonl \
-  --images-out needed_images_controls.txt
-#     then extract those images from each part:  tar -xzf <part>_keyframes.tgz -C data/nuscenes -T needed_images_controls.txt
+python -m belief_eval mine-controls --dataroot data/nuscenes --out sequences_control.jsonl \
+  --images-out needed_images_control.txt
+#     then extract those images from each part:  tar -xzf <part>_keyframes.tgz -C data/nuscenes -T needed_images_control.txt
 
 # 2. Dry run without a GPU
 python -m belief_eval run --dataroot data/nuscenes --sequences sequences_trainval.jsonl --model mock --limit 5 --out results/mock.jsonl
