@@ -133,8 +133,8 @@ cd report
 pdflatex main && bibtex main && pdflatex main && pdflatex main
 ```
 
-The paper reads its figures from `../figures/` (or `figures/` next to `main.tex`); regenerate them with step 4 above.
-On Overleaf, upload `main.tex`, `references.bib` and a `figures/` folder with the PDFs, then compile with pdfLaTeX.
+The paper reads its figures from `../figures/` (or `figures/` next to `main.tex`); regenerate them with step 4 (metrics and figures) above.
+If using Overleaf, upload `main.tex`, `references.bib` and a `figures/` folder with the PDFs, then compile with pdfLaTeX.
 
 ## Tests
 

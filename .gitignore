@@ -219,3 +219,16 @@ __marimo__/
 
 # Datasets (nuScenes terms forbid redistribution; this repo is public)
 data/
+
+# LaTeX build outputs (excluding compiled PDFs)
+*.aux
+*.bbl
+*.blg
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+!*.pdf
