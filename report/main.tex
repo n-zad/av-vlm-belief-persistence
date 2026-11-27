@@ -30,7 +30,7 @@ Video demo: \tbd{[add link]}}
 \maketitle
 
 \begin{abstract}
-Vision-language models (VLMs) are increasingly proposed as perception and reasoning components for autonomous vehicles, where they are queried repeatedly over a stream of camera frames. We study whether a VLM that has reported no pedestrian while the pedestrian was mostly occluded keeps that belief after the pedestrian becomes clearly visible. We mine 145 six-frame front-camera sequences from nuScenes in which a pedestrian goes from 0--40\% to 80--100\% visible, and query Qwen2.5-VL-7B and LLaVA-OneVision-7B on every frame in three modes: stateless (each frame alone), stateful (one conversation that includes the model's own earlier answers), and stateful with an instruction to reconsider. The first frame is identical across modes and produced identical answers in all 145 sequences for both models, so the history is the only difference. Conversation history lowers post-evidence accuracy by 29 points (95\% CI 23--35) for Qwen and 18 points (12--25) for LLaVA. On evidence frames each model detects without history, it still detects the pedestrian with history in only 22\% (Qwen) and 73\% (LLaVA) of sequences. The mechanism is answer copying: with history, 84\% and 93\% of answers repeat the previous answer verbatim, and after a previous ``no'' the models detect a clearly visible pedestrian in only 13\% and 24\% of cases. Instructing the model to reconsider does not help; only resetting the history does. To test the effect causally, we also plant a fixed wrong ``no'' in the history before the evidence frame: \tbd{[planted-``no'' result]}. On 75 pedestrian-free control sequences, a planted wrong ``yes'' \tbd{[persists / does not persist]}, \tbd{[so the effect is generic answer copying / specific to absence beliefs]}. We release the sequence mining, evaluation and analysis pipeline.
+Vision-language models (VLMs) are increasingly proposed as perception and reasoning components for autonomous vehicles, where they are queried repeatedly over a stream of camera frames. We study whether a VLM that has reported no pedestrian while the pedestrian was mostly occluded keeps that belief after the pedestrian becomes clearly visible. We mine 145 six-frame front-camera sequences from nuScenes in which a pedestrian goes from 0--40\% to 80--100\% visible, and query Qwen2.5-VL-7B and LLaVA-OneVision-7B on every frame in three modes: stateless (each frame alone), stateful (one conversation that includes the model's own earlier answers), and stateful with an instruction to reconsider. The first frame is identical across modes and produced identical answers in all 145 sequences for both models, so the history is the only difference. Conversation history lowers post-evidence accuracy by 25 points (95\% CI 19--32) for Qwen and 22 points (14--30) for LLaVA. On evidence frames each model detects without history, it still detects the pedestrian with history in only 21\% (Qwen) and 60\% (LLaVA) of sequences. The mechanism is answer copying: with history, 78\% and 93\% of answers repeat the previous answer verbatim, and after a previous ``no'' the models detect a clearly visible pedestrian in only 16\% and 19\% of cases. Instructing the model to reconsider does not help; only resetting the history does. To test the effect causally, we also plant a fixed wrong ``no'' in the history before the evidence frame: the models then detect only 21\% and 43\% of the pedestrians they detect without history. On 75 pedestrian-free control sequences, a planted wrong ``yes'' persists as well: LLaVA repeats it on every frame of every sequence, and Qwen keeps it on 95\% of empty frames after four planted turns, though not after one. The effect is therefore generic answer copying rather than a belief specific to absence. We release the sequence mining, evaluation and analysis pipeline.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -53,7 +53,7 @@ We address these with a controlled stateful-versus-stateless protocol on nuScene
   \item A \textbf{planted-belief experiment} that writes a fixed wrong answer into the history before the evidence frame, so the belief is not one the model formed itself, and measures how much evidence it takes to overturn it.
   \item \textbf{Pedestrian-free control sequences} that measure false positives and test whether a planted wrong ``yes'' persists the same way, separating a held absence belief from generic answer copying.
   \item A \textbf{perception-controlled metric}, visible-without-history accuracy, that counts only evidence frames the model detects without history, so that any remaining error is caused by the history.
-  \item An \textbf{empirical study} of Qwen2.5-VL-7B~\cite{bai2025qwen25vl} and LLaVA-OneVision-7B~\cite{li2024llavaov} showing a 29- and 18-point accuracy loss from history, traced to verbatim answer copying.
+  \item An \textbf{empirical study} of Qwen2.5-VL-7B~\cite{bai2025qwen25vl} and LLaVA-OneVision-7B~\cite{li2024llavaov} showing a 25- and 22-point accuracy loss from history, traced to verbatim answer copying.
   \item A \textbf{negative result}: a prompt-level reconsider instruction does not reduce persistence for either model, while resetting the history does.
 \end{itemize}
 
@@ -88,7 +88,7 @@ We address these with a controlled stateful-versus-stateless protocol on nuScene
   \node[box, right=of run] (parse) {JSON answer\\parser};
   \node[box, below=8mm of run] (metric) {Metrics with\\bootstrap 95\% CIs};
   \node[box, left=of metric] (fig) {Figures and\\ablations};
-  \node[data, right=of metric] (res) {875 runs\\per model\\(4{,}459 answers)};
+  \node[data, right=of metric] (res) {875 runs\\per model\\(4{,}458 answers)};
   \draw[arr] (meta) -- (proj);
   \draw[arr] (proj) -- (filt);
   \draw[arr] (filt) -- (seq);
@@ -168,7 +168,7 @@ All intervals are 95\% percentile bootstrap intervals with 1{,}000 resamples~\ci
 
 \subsection{Setup}
 
-Both models run on a Google Colab NVIDIA T4 (16\,GB) with Hugging Face Transformers, 4-bit bitsandbytes weights and fp16 compute, greedy decoding and at most 128 new tokens. Qwen2.5-VL-7B-Instruct receives images resized to a longest side of 1024\,px. LLaVA-OneVision-Qwen2-7B tiles each image, so a six-frame history at 1024\,px needs 27.7k prompt tokens and exhausts the T4 (Table~\ref{tab:profile}); it therefore runs at 768\,px. Each model answers 145 sequences $\times$ 3 modes $\times$ 6 frames $=2{,}610$ queries in the unplanted modes, $2\times563$ in the planted modes (planted frames need no query) and 723 on control sequences. Package versions are pinned (Transformers 5.24.1, Accelerate 1.16.0, bitsandbytes 0.50.2) and every result records its settings and versions. The stateless mode is the baseline, equivalent to resetting the history.
+Both models run on a Google Colab NVIDIA T4 (16\,GB) with Hugging Face Transformers, 4-bit bitsandbytes weights and fp16 compute, greedy decoding and at most 128 new tokens. Qwen2.5-VL-7B-Instruct receives images resized to a longest side of 1024\,px. LLaVA-OneVision-Qwen2-7B tiles each image, so a six-frame history at 1024\,px needs 27.7k prompt tokens and exhausts the T4 (Table~\ref{tab:profile}); it therefore runs at 768\,px. Each model answers 145 sequences $\times$ 3 modes $\times$ 6 frames $=2{,}610$ queries in the unplanted modes, $2\times563$ in the planted modes (planted frames need no query) and $450+272=722$ on control sequences. Package versions are pinned (Transformers 5.24.1, Accelerate 1.16.0, bitsandbytes 0.50.2) and every result records its settings and versions. The stateless mode is the baseline, equivalent to resetting the history.
 
 \subsection{Main results}
 
@@ -181,29 +181,29 @@ Both models run on a Google Colab NVIDIA T4 (16\,GB) with Hugging Face Transform
 \toprule
 Model & Metric & Stateless & Stateful & Reconsider\\
 \midrule
-\multirow{4}{*}{Qwen}  & Post-evid. acc. (\%) & 38 [32,45] & 9 [5,13] & 7 [4,10]\\
-                       & Persistence (\%)     & 67 [59,75] & 96 [92,99] & 96 [93,99]\\
-                       & Initial miss ($n$)   & 125 & 139 & 139\\
-                       & Never corrected ($n$) & 60 & 122 & 126\\
+\multirow{4}{*}{Qwen}  & Post-evid. acc. (\%) & 33 [26,40] & 8 [4,12] & 7 [4,11]\\
+                       & Persistence (\%)     & 74 [66,81] & 96 [92,99] & 97 [94,100]\\
+                       & Initial miss ($n$)   & 129 & 139 & 139\\
+                       & Never corrected ($n$) & 67 & 123 & 124\\
 \midrule
-\multirow{4}{*}{LLaVA} & Post-evid. acc. (\%) & 84 [79,88] & 65 [58,73] & 67 [59,74]\\
-                       & Persistence (\%)     & 28 [18,40] & 82 [73,90] & 82 [71,92]\\
-                       & Initial miss ($n$)   & 60 & 62 & 62\\
-                       & Never corrected ($n$) & 5 & 49 & 45\\
+\multirow{4}{*}{LLaVA} & Post-evid. acc. (\%) & 74 [67,80] & 52 [43,61] & 54 [46,62]\\
+                       & Persistence (\%)     & 40 [27,52] & 85 [77,93] & 84 [76,92]\\
+                       & Initial miss ($n$)   & 73 & 82 & 82\\
+                       & Never corrected ($n$) & 13 & 68 & 62\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:main} gives the main results. The paired stateful-minus-stateless difference in post-evidence accuracy is $-29$ points [$-35$, $-23$] for Qwen and $-18$ points [$-25$, $-12$] for LLaVA; both exceed the 10-point threshold we set in advance for a meaningful effect. On the sequences that both modes miss at $k-1$ (Qwen $n=125$, LLaVA $n=53$), history raises persistence from 67\% to 97\% for Qwen and from 30\% to 85\% for LLaVA.
+Table~\ref{tab:main} gives the main results. The paired stateful-minus-stateless difference in post-evidence accuracy is $-25$ points [$-32$, $-19$] for Qwen and $-22$ points [$-30$, $-14$] for LLaVA; both exceed the 10-point threshold we set in advance for a meaningful effect. On the sequences that both modes miss at $k-1$ (Qwen $n=129$, LLaVA $n=68$), history raises persistence from 74\% to 97\% for Qwen and from 41\% to 84\% for LLaVA.
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{visible_without_history.pdf}
-\caption{Visible-without-history accuracy. Among evidence frames each model answers correctly without history (Qwen $n=50$, LLaVA $n=119$), the share it still answers correctly with history. Error bars: 95\% scene-level bootstrap CIs.}
+\caption{Visible-without-history accuracy. Among evidence frames each model answers correctly without history (Qwen $n=43$, LLaVA $n=107$), the share it still answers correctly with its own history, with a reconsider instruction, and after planted ``no'' or ``yes'' answers (hatched). Error bars: 95\% scene-level bootstrap CIs.}
 \label{fig:vwh}
 \end{figure*}
 
-The models differ sharply in perception, so post-evidence accuracy alone mixes two effects. Fig.~\ref{fig:vwh} removes perception: on evidence frames that the model detects without history, Qwen with history still detects the pedestrian in 22\% [12, 34] of sequences and LLaVA in 73\% [65, 81]. History therefore removes most of Qwen's correct detections and about a quarter of LLaVA's. The effect is not one-sided by construction: on the evidence frame, history turns a correct stateless answer into a miss in 39 sequences for Qwen and 32 for LLaVA, and does the reverse in 0 and 6 (exact McNemar test, $p<10^{-11}$ and $p<10^{-4}$).
+The models differ sharply in perception, so post-evidence accuracy alone mixes two effects. Fig.~\ref{fig:vwh} removes perception: on evidence frames that the model detects without history, Qwen with history still detects the pedestrian in 21\% [9, 36] of sequences and LLaVA in 60\% [50, 69]. History therefore removes most of Qwen's correct detections and 40\% of LLaVA's. The effect is not one-sided by construction: on the evidence frame, history turns a correct stateless answer into a miss in 34 sequences for Qwen and 43 for LLaVA, and does the reverse in 0 and 9 (exact McNemar test, $p<10^{-9}$ and $p<10^{-5}$).
 
 \begin{figure*}[t]
 \centering
@@ -212,7 +212,7 @@ The models differ sharply in perception, so post-evidence accuracy alone mixes t
 \label{fig:frames}
 \end{figure*}
 
-Fig.~\ref{fig:frames} shows the same effect frame by frame. Without history, the share of ``present'' answers rises at the evidence frame, from 14\% to 35\% for Qwen and from 58\% to 82\% for LLaVA. With history it stays near 7\% for Qwen and rises only from 57\% to 64\% for LLaVA.
+Fig.~\ref{fig:frames} shows the same effect frame by frame. Without history, the share of ``present'' answers rises at the evidence frame, from 11\% to 30\% for Qwen and from 50\% to 74\% for LLaVA. With history it rises only from 4\% to 6\% for Qwen and from 43\% to 50\% for LLaVA.
 
 \subsection{Mechanism: answer copying}
 
@@ -226,61 +226,94 @@ Fig.~\ref{fig:frames} shows the same effect frame by frame. Without history, the
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}
 & Stateless & Stateful & Stateless & Stateful\\
 \midrule
-Identical to previous answer (\%) & 31 & 84 & 37 & 93\\
-``no''$\to$``yes'' switches ($n$) & 87 & 18 & 90 & 15\\
+Identical to previous answer (\%) & 30 & 78 & 36 & 93\\
+Same yes/no as previous answer (\%) & 84 & 97 & 77 & 98\\
+``no''$\to$``yes'' switches ($n$) & 82 & 17 & 106 & 15\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-With history, both models mostly repeat their previous answer character for character, including the evidence sentence (Table~\ref{tab:copy}). Without history the same models switch from ``no'' to ``yes'' 87 and 90 times across the 145 sequences; with history only 18 and 15 times.
+With history, both models mostly repeat their previous answer character for character, including the evidence sentence (Table~\ref{tab:copy}). Without history the same models switch from ``no'' to ``yes'' 82 and 106 times across the 145 sequences; with history only 17 and 15 times. With history, 97\% and 98\% of answers keep the previous yes/no decision.
 
 \subsection{Planted beliefs}
 
 \begin{figure*}[t]
 \centering
-% \includegraphics[width=\textwidth]{planted_belief.pdf}
-\fbox{\parbox{0.9\textwidth}{\centering\tbd{[planted\_belief figure, generated from the v2 results]}}}
-\caption{Accuracy from the evidence frame $k$ on. Top: positive sequences, with no history, the model's own history, and a planted ``no'' or ``yes'' before $k$. Bottom: control sequences, where the planted ``yes'' is the wrong belief.}
+\includegraphics[width=\textwidth]{planted_belief.pdf}
+\caption{Accuracy from the evidence frame $k$ on (offsets reached by at least 20 sequences). Later offsets are reached only by sequences with a small $k$, i.e.\ few planted turns, so the curves mix time since the evidence with the number of planted turns. Top: positive sequences, with no history, the model's own history, and a planted ``no'' or ``yes'' before $k$. Bottom: control sequences, where the planted ``yes'' is the wrong belief.}
 \label{fig:planted}
 \end{figure*}
 
-The planted modes test the effect causally. With a planted ``no'', \tbd{[VWH of planted-no, compared with stateful]} of the evidence frames each model detects without history are still detected, and \tbd{[correction latency / never corrected]} (Fig.~\ref{fig:planted}). With a planted ``yes'' on the same images, \tbd{[planted-yes VWH]}, so the answer text, not the images, \tbd{[drives the error]}. \tbd{[Effect of the number of planted turns $k$.]}
+\begin{table}[t]
+\centering
+\caption{Planted beliefs (95\% scene-level bootstrap CIs). VWH and EWH: evidence-frame accuracy on the frames the model answers correctly without history (Qwen $n=43$ and 72, LLaVA $n=107$ and 54). Never corrected: sequences with no correct answer from $k$ on.}
+\label{tab:planted}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+& Metric & Qwen & LLaVA\\
+\midrule
+\multirow{4}{*}{\shortstack[l]{Positive,\\planted ``no''}} & VWH (\%) & 21 [8,36] & 43 [32,53]\\
+                            & Post-evid. acc. (\%) & 7 [4,12] & 37 [29,46]\\
+                            & Persistence (\%) & 96 [92,99] & 64 [55,73]\\
+                            & Never corrected ($n$/145) & 127 & 83\\
+\midrule
+\multirow{2}{*}{\shortstack[l]{Positive,\\planted ``yes''}} & VWH (\%) & 91 [81,98] & 100\\
+                            & Post-evid. acc. (\%) & 58 [49,65] & 100\\
+\midrule
+\multirow{2}{*}{\shortstack[l]{Control,\\no history}} & Says ``present'' (\% of 450) & 1.6 & 31\\
+                            & Post-evid. acc. (\%) & 98 [96,100] & 70 [63,77]\\
+\midrule
+\multirow{4}{*}{\shortstack[l]{Control,\\planted ``yes''}} & EWH (\%) & 57 [46,68] & 0\\
+                            & Post-evid. acc. (\%) & 58 [47,69] & 0\\
+                            & Persistence (\%) & 43 [31,53] & 100\\
+                            & Never corrected ($n$/75) & 31 & 75\\
+\bottomrule
+\end{tabular}
+\end{table}
 
-On control sequences, the models report a pedestrian on \tbd{[false-positive rate]} of frames without history. After a planted ``yes'', \tbd{[empty-without-history accuracy and persistence]}.
+The planted modes test the effect causally (Table~\ref{tab:planted}, Fig.~\ref{fig:planted}). With a planted ``no'', Qwen still detects 21\% [8, 36] of the evidence frames it detects without history, the same as with its own history, and never corrects 127 of the 145 sequences. LLaVA still detects 43\% [32, 53], fewer than the 60\% with its own history, because its own history at $k-1$ is often a ``yes''. With a planted ``yes'' on the same images, the detections return (91\% and 100\%), so the answer text, not the images, drives the error. LLaVA overturns the planted ``no'' only slowly: in sequences with one planted turn, its accuracy rises from 48\% at $k$ to 62\% at $k+4$. More planted turns make the belief stronger: LLaVA detects 67\% of perceivable pedestrians after one planted ``no'' and 14\% after four ($n=45$ and 21). Qwen shows no such trend; one planted ``no'' is already enough (26\%, $n=19$).
+
+On control sequences without history, Qwen reports a pedestrian on 1.6\% of frames, LLaVA on 31\% (in 52 of the 75 sequences). After a planted ``yes'', LLaVA answers ``yes'' on every remaining frame of all 75 sequences, copying the planted answer verbatim, so its empty-without-history accuracy is 0\% ($n=54$). Qwen calls 57\% [46, 68] of the empty frames it gets right without history empty again, but this depends on the number of planted turns: 100\% after one ($n=23$), 89\% after two ($n=18$), 11\% after three ($n=9$) and 5\% after four ($n=22$). Within each group the answers barely change over the following frames; the rise of the Qwen control curve in Fig.~\ref{fig:planted} comes from only one-turn sequences reaching $k+4$. Qwen thus resists a single planted ``yes'' but not a single planted ``no'', while repeated wrong answers in either direction override what it sees.
 
 \subsection{Ablations}
 
 \begin{table}[t]
 \centering
-\caption{Ablations on the visible-without-history subset: stateful accuracy (\%) on the evidence frame. $n$ in parentheses.}
+\caption{Ablations on the visible-without-history subset: stateful accuracy (\%) on the evidence frame unless noted. $n$ in parentheses.}
 \label{tab:ablation}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{@{}llcc@{}}
 \toprule
 Factor & Level & Qwen & LLaVA\\
 \midrule
-\multirow{2}{*}{Stateful answer at $k{-}1$} & ``yes'' & 100 (5) & 100 (77)\\
-                                            & ``no''  & 13 (45) & 24 (42)\\
+\multirow{2}{*}{Stateful answer at $k{-}1$} & ``yes'' & 60 (5) & 100 (54)\\
+                                            & ``no''  & 16 (38) & 19 (53)\\
 \midrule
-\multirow{4}{*}{\shortstack[l]{Evidence index $k$\\(earlier turns)}} & 1 & 23 (22) & 69 (49)\\
-                                         & 2 & 21 (14) & 83 (29)\\
-                                         & 3 & 0 (7)   & 73 (15)\\
-                                         & 4 & 43 (7)  & 69 (26)\\
+\multirow{4}{*}{\shortstack[l]{Evidence index $k$\\(earlier turns)}} & 1 & 16 (19) & 64 (45)\\
+                                         & 2 & 25 (12) & 58 (26)\\
+                                         & 3 & 0 (6)   & 67 (15)\\
+                                         & 4 & 50 (6)  & 48 (21)\\
 \midrule
-\multirow{3}{*}{\shortstack[l]{Pedestrian height\\at $k$ (px)}} & $<60$  & 9 (11)  & 62 (47)\\
-                                            & 60--89 & 6 (18)  & 78 (45)\\
-                                            & $\ge 90$ & 43 (21) & 85 (27)\\
+\multirow{4}{*}{\shortstack[l]{Planted ``no'' turns $k$\\(planted-no accuracy)}} & 1 & 26 (19) & 67 (45)\\
+                                         & 2 & 17 (12) & 35 (26)\\
+                                         & 3 & 0 (6)   & 27 (15)\\
+                                         & 4 & 33 (6)  & 14 (21)\\
+\midrule
+\multirow{3}{*}{\shortstack[l]{Pedestrian height\\at $k$ (px)}} & $<60$  & 0 (8)  & 46 (39)\\
+                                            & 60--89 & 0 (14)  & 62 (42)\\
+                                            & $\ge 90$ & 43 (21) & 77 (26)\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Table~\ref{tab:ablation} varies one factor at a time on the visible-without-history subset.
 
-\textbf{Previous answer.} The stateful answer on the clearly visible frame is almost fully determined by the answer one frame earlier. After a ``yes'' both models stay correct (100\%); after a ``no'', only 13\% (Qwen) and 24\% (LLaVA) of pedestrians that the same model sees without history are reported. Because these answers are the model's own, the planted-belief experiment above tests the same dependence with a belief the model did not form.
+\textbf{Previous answer.} The stateful answer on the clearly visible frame is almost fully determined by the answer one frame earlier. After a ``yes'' LLaVA stays correct in all 54 sequences and Qwen in 3 of 5; after a ``no'', only 16\% (Qwen) and 19\% (LLaVA) of pedestrians that the same model sees without history are reported. Because these answers are the model's own, the planted-belief experiment above tests the same dependence with a belief the model did not form.
 
-\textbf{History length.} The number of earlier turns before the evidence frame ($k=1$ to 4) shows no consistent trend for either model, so a single wrong turn is enough to anchor the answer.
+\textbf{History length.} With the model's own history, the number of earlier turns before the evidence frame ($k=1$ to 4) shows no consistent trend for either model, so a single wrong turn is enough to anchor the answer. With a planted ``no'', LLaVA's accuracy falls steadily with the number of planted turns, from 67\% to 14\%; Qwen's shows no trend.
 
-\textbf{Pedestrian size.} Larger pedestrians partly overcome the history: stateful accuracy rises to 43\% (Qwen) and 85\% (LLaVA) for pedestrians at least 90\,px tall. Size also governs stateless perception: without history Qwen detects 16\% of evidence-frame pedestrians under 60\,px and all 5 above 150\,px, while LLaVA detects 70\% and 100\% (Fig.~\ref{fig:size}).
+\textbf{Pedestrian size.} Larger pedestrians partly overcome the history: stateful accuracy rises to 43\% (Qwen) and 77\% (LLaVA) for pedestrians at least 90\,px tall. Size also governs stateless perception: without history Qwen detects 12\% of evidence-frame pedestrians under 60\,px and all 5 above 150\,px, while LLaVA detects 58\% and 100\% (Fig.~\ref{fig:size}).
 
 \begin{figure*}[t]
 \centering
@@ -308,7 +341,7 @@ Frames per sequence & 40\,px & 60\,px & 80\,px\\
 \end{tabular}
 \end{table}
 
-\textbf{Mitigation.} The reconsider instruction gives 7\% (Qwen) and 67\% (LLaVA) post-evidence accuracy, no better than plain history (Table~\ref{tab:main}), and 16\% [6, 26] and 73\% [65, 81] visible-without-history accuracy. Its copy rate is unchanged (83\% and 93\%). Resetting the history (stateless) restores accuracy to 38\% and 84\%.
+\textbf{Mitigation.} The reconsider instruction gives 7\% (Qwen) and 54\% (LLaVA) post-evidence accuracy, no better than plain history (8\% and 52\%, Table~\ref{tab:main}), and 21\% [8, 36] and 62\% [51, 71] visible-without-history accuracy. It lowers Qwen's verbatim copy rate from 78\% to 57\%, but Qwen still keeps the previous yes/no decision in 96\% of answers: it rewords the answer without revising it. LLaVA's copy rate is unchanged (92\%). Resetting the history (stateless) restores accuracy to 33\% and 74\%.
 
 \subsection{Latency and memory}
 
@@ -331,7 +364,7 @@ LLaVA, 768\,px  & 2{,}464 & 14{,}929 & 6.1$\times$ & Yes\\
 \end{tabular}
 \end{table}
 
-Stateful inference grows the prompt linearly with the number of frames: the last query of a six-frame history is about six times longer than a stateless query (Table~\ref{tab:profile}). LLaVA's tiling makes each frame 2.8$\times$ as long as Qwen's even at a smaller image size. At 1024\,px its six-frame prompt reaches 27{,}661 tokens, and the run failed with 13.7\,GiB in use on the 14.6\,GiB device; 768\,px halves the prompt and fits. Since attention cost grows with prompt length, keeping the history is not only less accurate than resetting it but also more expensive per query. Measured per query on the T4, the median latency is \tbd{[stateless]}\,s without history and \tbd{[stateful]}\,s with it, and peak memory reaches \tbd{[peak GB]}.
+Stateful inference grows the prompt linearly with the number of frames: the last query of a six-frame history is about six times longer than a stateless query (Table~\ref{tab:profile}). LLaVA's tiling makes each frame 2.8$\times$ as long as Qwen's even at a smaller image size. At 1024\,px its six-frame prompt reaches 27{,}661 tokens, and the run failed with 13.7\,GiB in use on the 14.6\,GiB device; 768\,px halves the prompt and fits. Since attention cost grows with prompt length, keeping the history is not only less accurate than resetting it but also more expensive per query. Measured per query on the T4, the median latency is 3.7\,s (Qwen) and 4.2\,s (LLaVA) without history and 7.2\,s and 10.8\,s with it, rising to 10.7\,s and 21.9\,s at the sixth frame. Peak GPU memory reaches 7.0\,GB and 8.8\,GB.
 
 \subsection{Qualitative results}
 
@@ -343,31 +376,33 @@ Stateful inference grows the prompt linearly with the number of frames: the last
 \label{fig:examples}
 \end{figure*}
 
-Fig.~\ref{fig:examples} shows two sequences per model. In the second LLaVA example, the model without history detects the pedestrian on five consecutive frames, while the model with history answers ``no'' on all six.
+Fig.~\ref{fig:examples} shows two sequences per model. In the first LLaVA example, the model without history detects the pedestrian on four consecutive frames, while the model with history answers ``no'' on all six.
 
 % ---------------------------------------------------------------------------
 \section{Failure Analysis, Negative Results and Limitations}
 
-\textbf{Anchoring on the model's own answer.} The dominant failure is that a stateful model treats its previous answer as evidence. After a ``no'' at $k-1$, 87\% (Qwen) and 76\% (LLaVA) of perceivable pedestrians are missed on the clearly visible frame. The root cause is visible in the outputs: the answer, including its free-text evidence (``There are no pedestrians visible in the image.''), is copied verbatim.
+\textbf{Anchoring on the model's own answer.} The dominant failure is that a stateful model treats its previous answer as evidence. After a ``no'' at $k-1$, 84\% (Qwen) and 81\% (LLaVA) of perceivable pedestrians are missed on the clearly visible frame. The root cause is visible in the outputs: the answer, including its free-text evidence (``There are no pedestrians visible in the image.''), is copied verbatim.
 
-\textbf{Negative result: prompting does not fix it.} Telling the model that its earlier answers may be wrong changes neither accuracy nor the copy rate. The bias is not removed by an instruction placed in the same context that contains the anchoring answers; only removing those answers helps.
+\textbf{Negative result: prompting does not fix it.} Telling the model that its earlier answers may be wrong does not change accuracy, nor how often the previous yes/no decision is kept (96--97\%); Qwen only rewords its answers more often. The bias is not removed by an instruction placed in the same context that contains the anchoring answers; only removing those answers helps.
 
-\textbf{Persistence or copying?} Inertia runs both ways: with history, LLaVA never switches from ``yes'' to ``no'' (53 times without history), and Qwen does so 12 times (36 without). On positive sequences only the harmful direction counts as an error, so these runs alone cannot tell a held belief that the pedestrian is absent from repeating the last answer. The control sequences separate the two: \tbd{[planted-yes persistence on empty frames, compared with planted-no on positives]}.
+\textbf{Persistence or copying?} Inertia runs both ways: with history, LLaVA never switches from ``yes'' to ``no'' (64 times without history), and Qwen does so 8 times (35 without). On positive sequences only the harmful direction counts as an error, so these runs alone cannot tell a held belief that the pedestrian is absent from repeating the last answer. The control sequences separate the two. A planted wrong ``yes'' on empty frames removes all of LLaVA's correct ``no'' answers, more than a planted ``no'' removes of its detections (57\%). For Qwen it removes 43\% overall and 95\% after four planted turns, against 79\% for a planted ``no''. Wrong answers persist in both directions, so the failure is answer copying, not a belief specific to absence. The one asymmetry is that Qwen ignores a single planted ``yes'' but not a single planted ``no''.
 
-\textbf{Overconfidence.} Qwen reports a mean confidence of 0.90 on wrong answers and 0.80--0.86 on correct ones in every mode, so its confidence cannot flag persistent errors. LLaVA reports a confidence near 0 for every ``no'' answer, treating the field as a probability of presence, so its confidences are not comparable.
+\textbf{Overconfidence.} Qwen reports a mean confidence of 0.90--0.93 on wrong answers and 0.80--0.88 on correct ones in every mode, so its confidence cannot flag persistent errors. LLaVA reports a confidence near 0 for every ``no'' answer, treating the field as a probability of presence, so its confidences are not comparable.
 
-\textbf{Perception failures.} Qwen at 1024\,px detects only 16\% of pedestrians under 60\,px on the evidence frame, even without history. We handle this with the visible-without-history subset instead of reporting raw accuracy.
+\textbf{Perception failures.} Qwen at 1024\,px detects only 12\% of pedestrians under 60\,px on the evidence frame, even without history. We handle this with the visible-without-history subset instead of reporting raw accuracy. LLaVA errs the other way: without history it reports a pedestrian on 31\% of empty control frames, so some of its detections on positive sequences, and of the visible-without-history subset, are likely ``yes'' answers that happen to be right.
 
-\textbf{Format failures.} LLaVA answered with a bare ``No'' on 107 of 2{,}610 frames. The yes/no answer is still recovered, but no action is given; these frames count as unsafe, which inflates LLaVA's unsafe-action rate (7.6\% stateless, 10.1\% stateful).
+\textbf{Format failures.} LLaVA answered with a bare ``Yes'' or ``No'' instead of JSON on 750 of 2{,}610 frames in the three unplanted modes (186 without history, 282 in each mode with history). The yes/no answer is still recovered, but no action is given; these frames count as unsafe, which inflates LLaVA's unsafe-action rate (26\% stateless, 37\% stateful).
+
+\textbf{Format copying.} The bare replies are how LLaVA says ``no''. Without history, none of its 563 ``yes'' answers is bare, but 186 of its 307 ``no'' answers are (61\%), as are 222 of the 450 answers on control frames. With history, the format of the first answer is copied for the rest of the sequence. A bare reply was followed by another bare reply 235 times out of 235, and a JSON reply was never followed by a bare one (0 of 490). The 282 bare frames per stateful mode are therefore 47 sequences that start with a bare ``No'', six frames each; nine of these frames are a bare ``Yes'' that keeps the format but not the answer. The planted modes, whose history starts with our JSON answers, produce no bare replies. The format also changes how strongly the history anchors the answer. On evidence frames LLaVA detects without history, it still detects 6\% ($n=31$) with history in the sequences that start bare, against 82\% ($n=76$) in those that start with JSON. After a ``no'' at $k-1$ the split is 6\% ($n=31$) against 36\% ($n=22$). The bare-start sequences are somewhat harder, with 62\% post-evidence accuracy without history against 80\%, but not by enough to explain this gap. LLaVA's history effect is therefore concentrated in sequences where it copies a terse ``No'', and it depends on how often LLaVA chooses that format. That choice is sensitive to the question wording: in an earlier run that asked about ``the image'' rather than ``the most recent image'', 7 rather than 47 sequences started with a bare reply, and 10\% rather than 61\% of stateless ``no'' answers were bare.
 
 \textbf{Label failures.} nuScenes visibility is aggregated over all six cameras, so a frame labelled 80--100\% visible can be occluded in the front camera. We found such a case by inspection (a pedestrian behind a passing van); the visibility labels were not reviewed manually. The visible-without-history metric is robust to this because it only counts frames the model itself detects.
 
-\textbf{Limitations.} (i) The 75 control sequences are run only without history and with a planted ``yes'', and missing annotations do not guarantee an empty frame. (ii) Action labels are rule-based and 92\% are ``proceed'', so safety-action accuracy (Qwen 50--53\%, LLaVA 31--38\% balanced) is weak evidence; the rule considers only pedestrians, including occluded ones, and ignores vehicles. (iii) The two models use different image sizes to fit the GPU, so absolute accuracies are not directly comparable; each model's history effect is. (iv) Only object presence is tested, not attributes or spatial relations. (v) Two 7B models were evaluated, both with 4-bit weights, including the vision encoder, which may reduce small-object detection. (vi) The planted answers use one fixed wording, which differs from each model's own style (LLaVA, for example, sometimes answers with a bare ``No''), so a planted history is not identical in form to a natural one.
+\textbf{Limitations.} (i) The 75 control sequences are run only without history and with a planted ``yes'', and missing annotations do not guarantee an empty frame. (ii) Action labels are rule-based and 95\% are ``proceed'', so safety-action accuracy (Qwen 46--51\%, LLaVA 22--30\% balanced) is weak evidence; the rule considers only pedestrians, including occluded ones, and ignores vehicles. (iii) The two models use different image sizes to fit the GPU, so absolute accuracies are not directly comparable; each model's history effect is. (iv) Only object presence is tested, not attributes or spatial relations. (v) Two 7B models were evaluated, both with 4-bit weights, including the vision encoder, which may reduce small-object detection. (vi) The planted answers use one fixed wording, which differs from each model's own style (LLaVA, for example, sometimes answers with a bare ``No''), so a planted history is not identical in form to a natural one. (vii) LLaVA's history effect depends on its output format, which depends on the question wording, so its size is specific to our prompt.
 
 % ---------------------------------------------------------------------------
 \section{Conclusion and Future Work}
 
-Keeping a conversation history makes vision-language models repeat their earlier ``no pedestrian'' answers after the pedestrian becomes clearly visible. Across 145 nuScenes sequences, history removes 78\% of Qwen2.5-VL's and 27\% of LLaVA-OneVision's otherwise correct detections on the clearest frame, and the mechanism is verbatim answer copying. A planted wrong ``no'' \tbd{[planted-no result]}, and a planted wrong ``yes'' on empty frames \tbd{[control result]}. A reconsider instruction does not help; resetting the history does, and is also several times cheaper. For driving systems this argues against feeding a VLM its own unverified past answers.
+Keeping a conversation history makes vision-language models repeat their earlier ``no pedestrian'' answers after the pedestrian becomes clearly visible. Across 145 nuScenes sequences, history removes 79\% of Qwen2.5-VL's and 40\% of LLaVA-OneVision's otherwise correct detections on the clearest frame, and the mechanism is answer copying. A planted wrong ``no'' removes 79\% and 57\% of them, and a planted wrong ``yes'' on empty frames is kept by LLaVA on every frame and by Qwen once the history holds three or more such answers, so the failure is copying in either direction. A reconsider instruction does not help; resetting the history does, and also halves the median query latency. For driving systems this argues against feeding a VLM its own unverified past answers.
 
 Next steps are: (1) intermediate history designs, such as a sliding window or earlier images without earlier answers, to separate copying of answers from carrying over visual context; (2) more control sequences, also run with each model's own history; (3) per-camera visibility from geometric occlusion reasoning or manual review; (4) safety labels from human annotation; and (5) more and larger models at matched image sizes, without quantizing the vision encoder.
 

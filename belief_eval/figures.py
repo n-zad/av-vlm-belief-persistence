@@ -59,9 +59,15 @@ def end_labels(ax, ends, gap_pt=12):
     lo, hi = ax.get_ylim()
     height_pt = ax.get_position().height * fig.get_figheight() * 72
     gap = gap_pt * (hi - lo) / height_pt
-    placed = []
+    # labels that would overlap form a cluster, spread evenly around the cluster's mean value,
+    # so each label stays next to its own line end; touching clusters merge
+    clusters = []  # [start, [(x, y)]]
     for x, y in sorted(ends, key=lambda e: e[1]):
-        placed.append((x, y, max(y, placed[-1][2] + gap) if placed else y))
+        clusters.append([y, [(x, y)]])
+        while len(clusters) > 1 and clusters[-2][0] + gap * len(clusters[-2][1]) > clusters[-1][0]:
+            pts = clusters[-2][1] + clusters.pop()[1]
+            clusters[-1] = [mean(p[1] for p in pts) - gap * (len(pts) - 1) / 2, pts]
+    placed = [(x, y, start + i * gap) for start, pts in clusters for i, (x, y) in enumerate(pts)]
     for x, y, ly in placed:
         ax.annotate(f"{y:.0f}%", (x, ly), xytext=(7, 0), textcoords="offset points",
                     va="center", color=INK2, fontsize=9, annotation_clip=False)

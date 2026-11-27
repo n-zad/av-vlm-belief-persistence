@@ -14,22 +14,28 @@ Course project for CMPE 249: IA Systems (Track 6, Safety and Evaluation), San Jo
 Vision-language models (VLMs) are increasingly used as perception components in autonomous vehicles, where they are queried over a stream of camera frames.
 We test whether a VLM that wrongly reports "no pedestrian" keeps that belief after the pedestrian becomes clearly visible.
 On 145 nuScenes front-camera sequences in which a pedestrian goes from 0–40% to 80–100% visible, we query Qwen2.5-VL-7B and LLaVA-OneVision-7B on every frame without history (stateless), with the conversation history including their own earlier answers (stateful), and with history plus an instruction to reconsider.
-History lowers post-evidence accuracy by 29 and 18 points, and the cause is verbatim answer copying.
+History lowers post-evidence accuracy by 25 and 22 points, and the cause is answer copying.
 The reconsider instruction does not help; only resetting the history does.
+A fixed wrong "no" planted in the history suppresses detections just as strongly, and on 75 pedestrian-free control sequences a planted wrong "yes" persists too, so the failure is copying in either direction rather than a belief specific to absence.
 
 ## Results
 
 | | Qwen2.5-VL-7B (1024 px) | LLaVA-OneVision-7B (768 px) |
 |---|---|---|
-| Post-evidence accuracy, stateless → stateful | 38% → 9% | 84% → 65% |
-| Stateful − stateless (paired, 95% CI) | −29 pts [−35, −23] | −18 pts [−25, −12] |
-| Clear frames seen without history that are still seen with history | 22% [12, 34] of 50 | 73% [65, 81] of 119 |
-| Answers identical to the previous answer, stateless / stateful | 31% / 84% | 37% / 93% |
+| Post-evidence accuracy, stateless → stateful | 33% → 8% | 74% → 52% |
+| Stateful − stateless (paired, 95% CI) | −25 pts [−32, −19] | −22 pts [−30, −14] |
+| Clear frames seen without history that are still seen with history | 21% [9, 36] of 43 | 60% [50, 69] of 107 |
+| … with a planted "no" history instead | 21% [8, 36] | 43% [32, 53] |
+| Answers identical to the previous answer, stateless / stateful | 30% / 78% | 36% / 93% |
 | Reconsider instruction vs plain stateful | no better | no better |
+| Control frames called "present" without history | 1.6% | 31% |
+| Empty frames called empty without history, still called empty after a planted "yes" | 57% [46, 68] of 72 (5% after 4 planted turns) | 0% of 54 |
 
 ![Seen without history: still seen with history?](figures/visible_without_history.png)
 
-**Limitations:** no pedestrian-free control sequences (false positives are not measured); rule-based driving-action labels (92% "proceed"); different image sizes per model to fit a 16 GB T4; nuScenes visibility spans all six cameras and was not reviewed manually; 107 LLaVA replies were a bare "No" with no action.
+![After the evidence frame: is a wrong belief in the history overturned?](figures/planted_belief.png)
+
+**Limitations:** control sequences are run only without history and with a planted "yes"; rule-based driving-action labels (95% "proceed"); different image sizes per model to fit a 16 GB T4; nuScenes visibility spans all six cameras and was not reviewed manually; 750 of 2,610 LLaVA replies were a bare "Yes"/"No" with no action, and LLaVA's history effect is concentrated in the 47 sequences that start with a bare "No" (a format that depends on the question wording).
 Details in section 5 of the paper.
 
 ## Project structure
