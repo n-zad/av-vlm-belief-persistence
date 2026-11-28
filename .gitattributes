@@ -1,0 +1,3 @@
+# image lists are read by tar -T and sequence files by Python on any OS: keep them LF everywhere
+*.txt   text eol=lf
+*.jsonl text eol=lf

@@ -1,5 +1,6 @@
 import argparse
 import json
+from collections import Counter
 
 from . import metrics, mine, models, run
 
@@ -17,6 +18,18 @@ def main():
     m.add_argument("--min-px", type=int, default=40, help="min target height in px on the evidence frame")
     m.add_argument("--only-downloaded", action="store_true", help="skip frames whose image is missing")
     m.add_argument("--out", default="sequences.jsonl")
+
+    c = sub.add_parser("mine-controls", help="find pedestrian-free control sequences in nuScenes")
+    c.add_argument("--dataroot", required=True)
+    c.add_argument("--version", default="v1.0-trainval")
+    c.add_argument("--positives", default="sequences_trainval.jsonl",
+                   help="positive sequences: their scenes are used first and their evidence indices copied")
+    c.add_argument("--n", type=int, default=75)
+    c.add_argument("--seed", type=int, default=0)
+    c.add_argument("--only-downloaded", action="store_true", help="skip frames whose image is missing")
+    c.add_argument("--out", default="sequences_control.jsonl")
+    c.add_argument("--images-out", default="needed_images_control.txt",
+                   help="list of the images the controls use, for tar -T")
 
     r = sub.add_parser("run", help="run a VLM over mined sequences")
     r.add_argument("--dataroot", required=True)
@@ -42,9 +55,23 @@ def main():
     if a.cmd == "mine":
         seqs = mine.mine(a.dataroot, a.version, a.category, a.object_name, a.length,
                          a.min_px, a.only_downloaded)
-        with open(a.out, "w", encoding="utf-8") as f:
+        with open(a.out, "w", encoding="utf-8", newline="\n") as f:
             f.writelines(json.dumps(x) + "\n" for x in seqs)
         print(f"{len(seqs)} sequences -> {a.out}")
+    elif a.cmd == "mine-controls":
+        with open(a.positives, encoding="utf-8") as f:
+            positives = [json.loads(line) for line in f]
+        seqs = mine.mine_controls(a.dataroot, positives, a.version, a.n, seed=a.seed,
+                                  only_downloaded=a.only_downloaded)
+        with open(a.out, "w", encoding="utf-8", newline="\n") as f:
+            f.writelines(json.dumps(x) + "\n" for x in seqs)
+        images = sorted({fr["image"] for x in seqs for fr in x["frames"]})
+        with open(a.images_out, "w", encoding="utf-8", newline="\n") as f:
+            f.writelines(i + "\n" for i in images)
+        in_pos = len({x["scene"] for x in seqs} & {p["scene"] for p in positives})
+        conds = dict(sorted(Counter(x["condition"] for x in seqs).items()))
+        print(f"{len(seqs)} control sequences ({in_pos} from scenes with positives; {conds}) -> {a.out}; "
+              f"{len(images)} images -> {a.images_out}")
     elif a.cmd == "run":
         with open(a.sequences, encoding="utf-8") as f:
             seqs = [json.loads(line) for line in f][:a.limit]
