@@ -358,7 +358,7 @@ Frames per sequence & 40\,px & 60\,px & 80\,px\\
 \centering
 \includegraphics[width=\textwidth]{{examples_Qwen2.5-VL-7B-Instruct}.pdf}\\[2mm]
 \includegraphics[width=\textwidth]{examples_llava-onevision-qwen2-7b-ov-hf.pdf}
-\caption{Example sequences, cropped around the annotated pedestrian (circled); the evidence frame has a black border. Top: Qwen2.5-VL. Bottom: LLaVA-OneVision. In each, the model detects the pedestrian without history but keeps answering ``no'' with history.}
+\caption{Example sequences, cropped around the annotated pedestrian (circled); the evidence frame has a black border. Top: Qwen2.5-VL. Bottom: LLaVA-OneVision. In each, the model detects the pedestrian on the evidence frame without history but misses it with history.}
 \label{fig:examples}
 \end{figure*}
 
@@ -398,7 +398,7 @@ Fig.~\ref{fig:examples} shows two sequences per model. In the first LLaVA exampl
 
 \textbf{Persistence or copying?} Inertia runs both ways: with history, LLaVA never switches from ``yes'' to ``no'' (64 times without history), and Qwen does so 8 times (35 without). On positive sequences only the harmful direction counts as an error, so these runs alone cannot tell a held belief that the pedestrian is absent from repeating the last answer. The control sequences separate the two. A planted wrong ``yes'' on empty frames removes all of LLaVA's correct ``no'' answers, more than a planted ``no'' removes of its detections (57\%). For Qwen it removes 43\% overall and 95\% after four planted turns, against 79\% for a planted ``no''. Wrong answers persist in both directions, so the failure is answer copying, not a belief specific to absence. The one asymmetry is that Qwen ignores a single planted ``yes'' but not a single planted ``no''.
 
-\textbf{Overconfidence.} Qwen reports a mean confidence of 0.90--0.93 on wrong answers and 0.80--0.88 on correct ones in every mode, so its confidence cannot flag persistent errors. LLaVA reports a confidence near 0 for every ``no'' answer, treating the field as a probability of presence, so its confidences are not comparable.
+\textbf{Overconfidence.} Qwen reports a mean confidence of 0.90--0.93 on wrong answers and 0.80--0.88 on correct ones in the unplanted modes, so its confidence cannot flag persistent errors. LLaVA reports a confidence near 0 for every ``no'' answer of its own, treating the field as a probability of presence, so its confidences are not comparable; after planted answers it copies their 0.9.
 
 \textbf{Perception failures.} Qwen at 1024\,px detects only 12\% of pedestrians under 60\,px on the evidence frame, even without history. We handle this with the visible-without-history subset instead of reporting raw accuracy. LLaVA errs the other way: without history it reports a pedestrian on 31\% of empty control frames, so some of its detections on positive sequences, and of the visible-without-history subset, are likely ``yes'' answers that happen to be right.
 
